@@ -8,7 +8,11 @@ strategy:
 
   # 选股参数
   filter_params:
-    decline_days_threshold: 8          # 连续下跌天数阈值（默认8天）
+    # 筛选器类型（stock_filter/wencai_filter）
+    filter_type: "wencai_filter"        # 使用问财筛选器（推荐，更智能）
+
+    # 传统筛选器参数（filter_type=stock_filter时使用）
+    decline_days_threshold: 7          # 连续下跌天数阈值（修改为7天）
     market_cap_threshold: 1000000000   # 最小市值（10亿，单位：元）
     stock_universe: "A_SHARE"          # 股票池：A股
     exclude_st:
@@ -16,12 +20,20 @@ strategy:
       enabled: true                    # 是否排除退市整理期股票
     exclude_suspend: true              # 是否排除停牌股票
 
+    # 问财筛选器参数（filter_type=wencai_filter时使用）
+    # ⚠️ 注意：问财Cookie会过期（通常30天），需要定期从浏览器重新获取
+    # 获取方法：登录https://www.iwencai.com，使用浏览器开发者工具复制Cookie
+    wencai_params:
+      cookie: "Ths_iwencai_Xuangu_mt4zcu73qjh83vi4y5pr2nybkxnoenud; ta_random_userid=wx7wznncgr; cid=baf1622e8eea6272fc9d2ce794097ea61746875841; u_ukey=A10702B8689642C6BE607730E11E6E4A; u_uver=1.0.0; u_dpass=vGdGzLxENUG6ZwHZ8OGxTLDmIKF5Rmb8llOwW2ykQE%2BOjjddJ4Q3jJx2t9d7r%2FnWHi80LrSsTFH9a%2B6rtRvqGg%3D%3D; u_did=3C009AF7CFB64A2EB8000AEAFC84637E; u_ttype=WEB; ttype=WEB; user=MDpteF9qOWIxb3JjZjQ6Ok5vbmU6NTAwOjc0MzYyNjc0MDo3LDExMTExMTExMTExLDQwOzQ0LDExLDQwOzYsMSw0MDs1LDEsNDA7MSwxMDEsNDA7MiwxLDQwOzMsMSw0MDs1LDEsNDA7OCwwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSw0MDsxMDIsMSw0MDoxNjo6OjczMzYyNjc0MDoxNzYzNDU2NjQ5Ojo6MTcyNzQxMzM4MDo2MDQ4MDA6MDoxNGIzMGE3OWJlZTVjNTFhNTY3MTdmYzJkODI2NDZlNWI6ZGVmYXVsdF81OjA%3D; userid=733626740; u_name=mx_j9b1orcf4; escapename=mx_j9b1orcf4; ticket=196b8d3516872396b9d61a7861207165; user_status=0; utk=e46397c25629b3cfcd6e1bfa34125d4a; sess_tk=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6InNlc3NfdGtfMSIsImJ0eSI6InNlc3NfdGsifQ.eyJqdGkiOiI1YjZlNjQ4MjJkZmMxNzY3YTU1MTVjZWU5YmE3MzA0YjEiLCJpYXQiOjE3NjM0NTY2NDksImV4cCI6MTc2NDA2MTQ0OSwic3ViIjoiNzMzNjI2NzQwIiwiaXNzIjoidXBhc3MuaXdlbmNhaS5jb20iLCJhdWQiOiIyMDIwMTExODUyODg5MDcyIiwiYWN0Ijoib2ZjIiwiY3VocyI6ImY0MDc5ZjJmNWU4MWZiNTgxYzdkM2YwNmRmZDgxOGQ0NjAwMTZiZDUwOWNkYjUzZmM2NmYxNTcyNzMyYWU5NDIifQ.UkFAerw8xEr2LfqqGeam3Rb4rLLihUcex-GXwoGFbbiyZsv3LnPn7j7ZzdQJn8aUERlDZLuCOowpGnxZoFUhbw; cuc=80pgkax6oqk0; THSSESSID=167576bfd4ec1b26c44679b2a4; v=A5ZHNl7v431o69fZCVulVBKh50edN9a7LHUO_QDsgu8V_zj5aMcqgfwLXsXT"
+      fallback_on_error: true          # 失败时回退到stock_filter
+      market_cap_threshold: 1000000000  # 最小市值（10亿，单位：元），可选
+
   # 入场参数
   entry_params:
-    decline_percent_per_layer: 0.10    # 每层下跌百分比（10%）
-    position_percent_per_layer: 0.10   # 每层加仓百分比（10%，基于初始仓位）
-    max_layers: 10                     # 最大加仓层数（防止无限加仓）
-    initial_position_size: 0.05        # 首次建仓仓位（5%）
+    decline_percent_per_layer: 0.01    # 每层下跌百分比（1%）
+    position_percent_per_layer: 0.10   # 每层加仓百分比（10%，基于总资金）
+    max_layers: 8                      # 最大加仓层数（8次补仓，共80%）
+    initial_position_size: 0.20        # 首次建仓仓位（20%）
 
   # 出场参数
   exit_params:
@@ -39,11 +51,12 @@ strategy:
 
   # 资金参数
   capital_params:
-    initial_capital: 10000000          # 初始资金1000万
-    commission_rate: 0.0003            # 手续费率（万分之三）
+    initial_capital: 1000000           # 初始资金100万
+    commission_rate: 0.0003            # 佣金费率（万分之三）
+    stamp_duty: 0.0005                 # 印花税（万分之五，仅卖出时收取）
+    transfer_fee: 0.00001              # 过户费（十万分之一，仅沪市股票收取）
     slippage: 0.001                    # 滑点（0.1%）
-    stamp_duty: 0.001                  # 印花税（0.1%，仅卖出时）
-    min_commission: 5                  # 最低手续费（元）
+    min_commission: 5                  # 最低佣金（元）
 
 # 数据配置
 data:
@@ -55,8 +68,8 @@ data:
 
 # 回测配置
 backtest:
-  start_date: "2020-01-01"            # 回测开始日期
-  end_date: "2023-12-31"              # 回测结束日期
+  start_date: "2024-08-01"            # 回测开始日期
+  end_date: "2024-11-01"              # 回测结束日期
   symbols:                            # 回测标的
     type: "A_SHARE"                   # 类型：A_SHARE（全市场）/LIST（指定列表）/INDEX（指数成分股）
     list: []                          # 如type=LIST，填写具体的股票代码列表

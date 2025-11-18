@@ -10,6 +10,8 @@ vnpy>=2.9.0
 
 # 数据获取和存储
 akshare>=1.8.0
+tushare>=2.9.1
+pywencai>=0.3.7
 requests>=2.25.0
 
 # 配置管理
