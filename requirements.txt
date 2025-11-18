@@ -1,0 +1,35 @@
+# 核心依赖
+pandas>=1.3.0
+numpy>=1.21.0
+
+# VectorBT回测引擎
+vectorbt>=0.26.0
+
+# vn.py量化交易框架
+vnpy>=2.9.0
+
+# 数据获取和存储
+akshare>=1.8.0
+requests>=2.25.0
+
+# 配置管理
+pyyaml>=5.4.1
+
+# 类型提示
+pydantic>=1.8.0
+
+# 日志
+loguru>=0.6.0
+
+# 进度条
+tqdm>=4.60.0
+
+# 数据分析
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# 日期处理
+python-dateutil>=2.8.0
+
+# SQLite数据库（数据存储）
+# （Python内置，不需要额外安装）

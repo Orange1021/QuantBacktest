@@ -1,0 +1,91 @@
+# 持续下跌策略配置文件
+# Continuous Decline Strategy Configuration
+
+strategy:
+  name: "ContinuousDeclineStrategy"
+  description: "持续下跌抄底策略 - 筛选连续下跌股票并分层加仓"
+  author: "Your Name"
+
+  # 选股参数
+  filter_params:
+    decline_days_threshold: 8          # 连续下跌天数阈值（默认8天）
+    market_cap_threshold: 1000000000   # 最小市值（10亿，单位：元）
+    stock_universe: "A_SHARE"          # 股票池：A股
+    exclude_st:
+      enabled: true                    # 是否排除ST股
+      enabled: true                    # 是否排除退市整理期股票
+    exclude_suspend: true              # 是否排除停牌股票
+
+  # 入场参数
+  entry_params:
+    decline_percent_per_layer: 0.10    # 每层下跌百分比（10%）
+    position_percent_per_layer: 0.10   # 每层加仓百分比（10%，基于初始仓位）
+    max_layers: 10                     # 最大加仓层数（防止无限加仓）
+    initial_position_size: 0.05        # 首次建仓仓位（5%）
+
+  # 出场参数
+  exit_params:
+    exit_on_first_decline: true        # 上涨后首次下跌即清仓
+    use_trailing_stop: false           # 是否使用跟踪止损
+    trailing_stop_percent: 0.05        # 跟踪止损百分比（5%）
+
+  # 风险控制
+  risk_params:
+    single_position_limit: 0.30        # 单票最大仓位30%
+    total_position_limit: 0.80         # 总仓位最大80%
+    stop_loss_percent: 0.15            # 止损线15%
+    daily_loss_limit: 0.05             # 单日最大亏损5%
+    max_holding_days: 60               # 最大持仓天数（防止套牢）
+
+  # 资金参数
+  capital_params:
+    initial_capital: 10000000          # 初始资金1000万
+    commission_rate: 0.0003            # 手续费率（万分之三）
+    slippage: 0.001                    # 滑点（0.1%）
+    stamp_duty: 0.001                  # 印花税（0.1%，仅卖出时）
+    min_commission: 5                  # 最低手续费（元）
+
+# 数据配置
+data:
+  provider: "tushare"                  # 数据提供商（tushare/akshare/local）
+  tushare_token: "your_token_here"     # Tushare token（如使用）
+  local_data_dir: "data/raw"           # 本地数据目录（如使用）
+  adjust_type: "qfq"                   # 复权类型（qfq: 前复权，hfq: 后复权）
+  price_field: "close"                 # 使用收盘价作为决策依据
+
+# 回测配置
+backtest:
+  start_date: "2020-01-01"            # 回测开始日期
+  end_date: "2023-12-31"              # 回测结束日期
+  symbols:                            # 回测标的
+    type: "A_SHARE"                   # 类型：A_SHARE（全市场）/LIST（指定列表）/INDEX（指数成分股）
+    list: []                          # 如type=LIST，填写具体的股票代码列表
+    index_code: "000001.SH"           # 如type=INDEX，填写指数代码
+  benchmark: "000001.SH"              # 业绩基准（上证指数）
+  output_dir: "data/backtest_results"  # 回测结果输出目录
+  save_trades: true                   # 是否保存交易记录
+  save_positions: true                # 是否保存持仓记录
+
+# 实盘配置（vn.py）
+live:
+  gateway: "ctp"                       # 交易网关（ctp/xtp/futu）
+  account_file: "configs/live/account.yaml"  # 账户配置文件
+  symbols:                            # 交易标的
+    - "600000.SH"
+    - "000001.SZ"
+  trading_hours:                      # 交易时间（A股）
+    pre_open: "09:15"
+    open: "09:30"
+    noon_start: "11:30"
+    noon_end: "13:00"
+    close: "15:00"
+  log_level: "INFO"                   # 日志级别
+  max_workers: 8                      # 最大工作线程数（用于扫描股票）
+
+# 日志配置
+logging:
+  level: "INFO"                        # 日志级别（DEBUG/INFO/WARNING/ERROR）
+  file: "logs/strategy.log"           # 日志文件路径
+  max_bytes: 10485760                 # 单个日志文件最大大小（10MB）
+  backup_count: 10                    # 备份文件数量
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # 日志格式
