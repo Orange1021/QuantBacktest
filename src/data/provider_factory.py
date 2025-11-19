@@ -22,6 +22,8 @@ import os
 
 import logging
 
+from datetime import datetime
+
 from typing import Dict, List, Any, Optional, Union
 
 from pathlib import Path
@@ -478,7 +480,8 @@ class DataProviderFactory:
 
             else:
 
-                logger.warning(f"降级链中的数据源不可用: {name}")
+                # Note: 改为debug级别，这是降级链的正常行为
+                logger.debug(f"降级链中的数据源不可用: {name}")
 
 
 
@@ -725,9 +728,11 @@ class DataProviderProxy(DataProvider):
 
         except Exception as e:
 
-            logger.warning(f"主数据源失败: {self.primary.__class__.__name__}.{method_name}")
+            # Note: 改为debug级别，因为很多股票（如退市、停牌）可能从某个数据源获取不到数据
+            # 这是正常的降级流程，不需要warning级别
+            logger.debug(f"主数据源失败: {self.primary.__class__.__name__}.{method_name}")
 
-            logger.warning(f"错误信息: {str(e)[:100]}")
+            logger.debug(f"错误信息: {str(e)[:100]}")
 
 
 
@@ -803,11 +808,13 @@ class DataProviderProxy(DataProvider):
 
             except Exception as e2:
 
-                logger.warning(f"备用数据源失败 ({i}/{len(self.fallbacks)})")
+                # Note: 改为debug级别，因为很多股票（如退市、停牌）可能从某个数据源获取不到数据
+                # 这是正常的降级流程，不需要warning级别
+                logger.debug(f"备用数据源失败 ({i}/{len(self.fallbacks)})")
 
-                logger.warning(f"数据源: {fallback.__class__.__name__}")
+                logger.debug(f"数据源: {fallback.__class__.__name__}")
 
-                logger.warning(f"错误: {str(e2)[:100]}")
+                logger.debug(f"错误: {str(e2)[:100]}")
 
 
 

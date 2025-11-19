@@ -7,12 +7,10 @@ data:
   # 可选值: local_csv, tushare, akshare
   primary_provider: "local_csv"
 
-  # 降级策略（按顺序尝试）
-  # 当主数据源失败时，按顺序尝试备用数据源
-  fallback_chain:
+  # 降级策略（按顺序尝试）
+  # 当主数据源失败时，按顺序尝试备用数据源
+  fallback_chain:
     - "local_csv"
-    - "tushare"
-    - "akshare"
 
   # 是否启用自动降级
   # true: 主数据源失败时自动尝试备用数据源
@@ -65,39 +63,39 @@ data:
       # false: 保留所有日期（包括未来）
       filter_future: true
 
-  # Tushare数据提供器配置
-  tushare:
-    # 是否启用
-    enabled: true
-
-    # Tushare Token
-    # 支持两种方式配置：
-    # 1. 直接在这里填写: "your_token_here"
-    # 2. 设置环境变量: export TUSHARE_TOKEN="your_token_here"
-    token: "${TUSHARE_TOKEN}"
-
-    # 重试配置
-    retry:
-      # 最大重试次数
-      max_attempts: 3
-
-      # 重试间隔（秒）
-      delay: 1
-
-    # 超时配置（秒）
-    timeout: 30
-
-  # Akshare数据提供器配置
-  akshare:
-    # 是否启用
-    enabled: true
-
-    # 重试配置
-    retry:
-      # 最大重试次数
-      max_attempts: 3
-
-      # 重试间隔（秒）
+  # Tushare数据提供器配置
+  tushare:
+    # 是否启用
+    enabled: false
+
+    # Tushare Token
+    # 支持两种方式配置：
+    # 1. 直接在这里填写: "your_token_here"
+    # 2. 设置环境变量: export TUSHARE_TOKEN="your_token_here"
+    token: "${TUSHARE_TOKEN}"
+
+    # 重试配置
+    retry:
+      # 最大重试次数
+      max_attempts: 3
+
+      # 重试间隔（秒）
+      delay: 1
+
+    # 超时配置（秒）
+    timeout: 30
+
+  # Akshare数据提供器配置
+  akshare:
+    # 是否启用
+    enabled: false
+
+    # 重试配置
+    retry:
+      # 最大重试次数
+      max_attempts: 3
+
+      # 重试间隔（秒）
       delay: 1
 
 # 数据缓存配置（跨回测共享）

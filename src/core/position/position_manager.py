@@ -28,7 +28,7 @@ class Position:
         entry_date: 首次建仓日期
         layer_count: 加仓层数（从0开始）
         has_risen: 是否上涨过（关键字段，用于卖出判断）
-        initial_position_size: 初始仓位大小（占总资金比例）
+        initial_position_size: 初始仓位大小（占单票配额比例）
         total_cost: 总成本
         last_update: 最后更新时间
     """
@@ -36,7 +36,7 @@ class Position:
     quantity: int = 0
     avg_price: float = 0.0
     current_price: float = 0.0
-    entry_date: datetime = None
+    entry_date: Optional[datetime] = None
     layer_count: int = 0
     has_risen: bool = False
     initial_position_size: float = 0.0
@@ -192,8 +192,18 @@ class PositionManager:
         self.positions: Dict[str, Position] = {}
         self.params = params or {}
 
+        # 新增：最大持仓数量（用于资金分配）
+        self.max_position_count = self.params.get('max_position_count', 10)
+        if self.max_position_count <= 0:
+            raise ValueError(f"max_position_count必须大于0, 当前: {self.max_position_count}")
+
+        # 新增：单票配额 = 总资金 / 最大持仓数
+        self.per_stock_allocation = self.total_capital / self.max_position_count
+
         self.logger = setup_logger('position_manager')
         self.logger.info(f"仓位管理器初始化: 总资金={total_capital:,.0f}元")
+        self.logger.info(f"  最大持仓数: {self.max_position_count}")
+        self.logger.info(f"  单票配额: {self.per_stock_allocation:,.0f}")
 
     def calculate_initial_position_size(self, price: float) -> int:
         """
@@ -215,7 +225,8 @@ class PositionManager:
             >>> print(f"初始建仓数量: {quantity}股")  # 20000股 (20万/10元)
         """
         initial_percent = self.params.get('initial_position_size', 0.20)
-        position_value = self.total_capital * initial_percent
+        # 关键修改：基于单票配额，而不是总资金
+        position_value = self.per_stock_allocation * initial_percent
 
         # 检查可用资金
         if position_value > self.available_capital:
@@ -273,8 +284,9 @@ class PositionManager:
             self.logger.warning(f"超过最大加仓层数: {layer} > {max_layers}")
             return 0
 
-        # 加仓金额 = 总资金 * 10%
-        add_value = self.total_capital * position_percent_per_layer
+        # 关键修改：基于单票配额，而不是总资金
+        # 加仓金额 = 单票配额 * 10%
+        add_value = self.per_stock_allocation * position_percent_per_layer
 
         # 检查可用资金
         if add_value > self.available_capital:
@@ -292,7 +304,8 @@ class PositionManager:
         symbol: str,
         price: float,
         quantity: Optional[int] = None,
-        percent: Optional[float] = None
+        percent: Optional[float] = None,
+        entry_date: Optional[datetime] = None
     ) -> bool:
         """
         开仓（首次建仓）
@@ -339,7 +352,7 @@ class PositionManager:
             quantity=quantity,
             avg_price=price,
             current_price=price,
-            entry_date=datetime.now(),
+            entry_date=entry_date,
             layer_count=0,
             has_risen=False,
             initial_position_size=percent or self.params.get('initial_position_size', 0.20),
@@ -500,12 +513,14 @@ class PositionManager:
                 'total_value': 0.0,
                 'total_cost': 0.0,
                 'total_pnl': 0.0,
-                'available_capital': self.available_capital
+                'available_capital': self.available_capital,
+                'used_capital_percent': 0.0
             }
 
         total_value = sum(p.market_value for p in self.positions.values())
         total_cost = sum(p.total_cost for p in self.positions.values())
         total_pnl = sum(p.pnl for p in self.positions.values())
+        used_capital = self.total_capital - self.available_capital
 
         return {
             'position_count': len(self.positions),
@@ -514,7 +529,8 @@ class PositionManager:
             'total_pnl': total_pnl,
             'pnl_percent': (total_pnl / total_cost * 100) if total_cost > 0 else 0.0,
             'available_capital': self.available_capital,
-            'exposure': total_value / self.total_capital if self.total_capital > 0 else 0.0
+            'exposure': total_value / self.total_capital if self.total_capital > 0 else 0.0,
+            'used_capital_percent': used_capital / self.total_capital if self.total_capital > 0 else 0.0
         }
 
     def check_position_limit(self, symbol: str, max_percent: float = 0.30) -> bool:

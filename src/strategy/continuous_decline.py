@@ -74,49 +74,58 @@ class ContinuousDeclineStrategy(BaseStrategy):
         Args:
             context: 运行上下文
         """
-        self.context = context
-        self.logger = context.get('logger')
-
-        # 创建数据提供器
-        self.data_provider = context.get('data_provider')
-        data_provider_factory = context.get('data_provider_factory')
-
-        if not data_provider_factory:
-            raise ValueError("缺少data_provider_factory")
-
-        # 创建股票筛选器
-        self.logger.info("创建股票筛选器...")
-        filter_type = self.filter_params.get('filter_type', 'stock_filter')
-
-        if filter_type == 'wencai_filter':
-            self.logger.info("  使用问财筛选器（智能筛选，数据准确）")
-            wencai_params = self.filter_params.get('wencai_params', {})
-            cookie = wencai_params.get('cookie', '')
-
-            if not cookie:
-                self.logger.warning("  未配置问财Cookie，将使用传统筛选器作为回退")
-                self.stock_filter = StockFilter(data_provider_factory)
-            else:
-                self.stock_filter = WencaiStockFilter(cookie)
-        else:
-            self.logger.info("  使用传统筛选器（基于历史数据）")
+        self.context = context
+
+        # 创建数据提供器
+        self.data_provider = context.get('data_provider')
+        data_provider_factory = context.get('data_provider_factory')
+
+        if not data_provider_factory:
+            raise ValueError("缺少data_provider_factory")
+
+        # 创建logger（如果context中没有logger的话，使用默认logger）
+        self.logger = context.get('logger')
+        if not self.logger:
+            from src.utils.logger import setup_logger
+            self.logger = setup_logger('continuous_decline_strategy')
+
+        # 创建股票筛选器
+        self.logger.info("创建股票筛选器...")
+        filter_type = self.filter_params.get('filter_type', 'stock_filter')
+
+        if filter_type == 'wencai_filter':
+            self.logger.info("  使用问财筛选器（智能筛选，数据准确）")
+            wencai_params = self.filter_params.get('wencai_params', {})
+            cookie = wencai_params.get('cookie', '')
+
+            if not cookie:
+                self.logger.warning("  未配置问财Cookie，将使用传统筛选器作为回退")
+                self.stock_filter = StockFilter(data_provider_factory)
+            else:
+                self.stock_filter = WencaiStockFilter(cookie)
+        else:
+            self.logger.info("  使用传统筛选器（基于历史数据）")
             self.stock_filter = StockFilter(data_provider_factory)
 
         # 创建仓位管理器
         initial_capital = self.capital_params.get('initial_capital', 1000000)
+
+        # 关键修改：添加max_position_count到position_params
         position_params = {
             'initial_position_size': self.entry_params.get('initial_position_size', 0.20),
             'position_percent_per_layer': self.entry_params.get('position_percent_per_layer', 0.10),
-            'max_layers': self.entry_params.get('max_layers', 8)
+            'max_layers': self.entry_params.get('max_layers', 8),
+            'max_position_count': self.risk_params.get('max_position_count', 10)  # 新增：用于资金分配
         }
 
         self.logger.info(f"创建仓位管理器: 初始资金={initial_capital:,.0f}")
+        self.logger.info(f"  最大持仓数: {position_params['max_position_count']}")
         self.position_manager = PositionManager(
             total_capital=initial_capital,
             params=position_params
         )
 
-        self.logger.info("✓ 策略初始化成功")
+        self.logger.info("策略初始化成功")
         self.logger.info(f"  - 下跌天数阈值: {self.filter_params.get('decline_days_threshold', 7)}天")
         self.logger.info(f"  - 初始仓位: {self.entry_params.get('initial_position_size', 0.20):.1%}")
         self.logger.info(f"  - 补仓比例: {self.entry_params.get('position_percent_per_layer', 0.10):.1%}")
@@ -127,14 +136,35 @@ class ContinuousDeclineStrategy(BaseStrategy):
         """
         盘前处理
 
+        优化：如果持仓满，则跳过选股，节省计算资源
+
         Args:
             date: 交易日期
             context: 运行上下文
         """
         self.current_date = date
 
+        # 检查持仓数量，如果已满则跳过选股
+        if not self.position_manager:
+            self.candidate_stocks = []
+            return
+
+        current_position_count = len(self.position_manager.get_all_positions())
+        max_position_count = self.risk_params.get('max_position_count', 10)
+
+        if current_position_count >= max_position_count:
+            self.logger.info(
+                f"{date.strftime('%Y-%m-%d')} - "
+                f"持仓已满（{current_position_count}/{max_position_count}只），跳过选股"
+            )
+            self.candidate_stocks = []
+            return
+
         # 获取当日候选股票
-        self.logger.info(f"{date.strftime('%Y-%m-%d')} - 开始选股扫描...")
+        self.logger.info(
+            f"{date.strftime('%Y-%m-%d')} - "
+            f"当前持仓: {current_position_count}/{max_position_count}只，开始选股扫描..."
+        )
 
         try:
             decline_days = self.filter_params.get('decline_days_threshold', 7)
@@ -152,7 +182,12 @@ class ContinuousDeclineStrategy(BaseStrategy):
                 self.logger.info(f"  Top 5: {self.candidate_stocks[:5]}")
 
         except Exception as e:
-            self.logger.warning(f"  筛选失败: {e}")
+            self.logger.warning(f"  [DEBUG] 捕获异常的完整信息:")
+            self.logger.warning(f"    Exception type: {type(e)}")
+            self.logger.warning(f"    Exception message: {e}")
+            import traceback
+            for line in traceback.format_exc().split('\n'):
+                self.logger.warning(f"    {line}")
             self.candidate_stocks = []
 
     def on_bar(self, bar: Any, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -180,10 +215,15 @@ class ContinuousDeclineStrategy(BaseStrategy):
         has_position = position is not None and position.quantity > 0
 
         if not has_position:
-            # 无持仓 - 检查买入信号
+            # 无持仓 - 检查买入信号（首次建仓）
             return self._check_buy_signal(bar, context)
         else:
-            # 有持仓 - 检查卖出信号
+            # 有持仓 - 先检查加仓信号，再检查卖出信号
+            add_signal = self._check_add_position_signal(bar, context, position)
+            if add_signal:
+                return add_signal
+
+            # 检查卖出信号
             return self._check_sell_signal(bar, context, position)
 
     def _check_buy_signal(self, bar: Any, context: Any) -> Optional[Dict[str, Any]]:
@@ -210,10 +250,12 @@ class ContinuousDeclineStrategy(BaseStrategy):
         if symbol not in self.candidate_stocks:
             return None
 
-        # 检查持仓数量限制（最多同时持仓10只）
+        # 检查持仓数量限制（从配置读取）
         position_count = len(self.position_manager.get_all_positions())
-        if position_count >= 10:
-            self.logger.debug(f"达到最大持仓数量限制: {position_count}")
+        max_position_count = self.risk_params.get('max_position_count', 10)
+
+        if position_count >= max_position_count:
+            self.logger.debug(f"达到最大持仓数量限制: {position_count}/{max_position_count}")
             return None
 
         # 检查可用资金
@@ -221,16 +263,28 @@ class ContinuousDeclineStrategy(BaseStrategy):
             self.logger.debug(f"可用资金不足: {self.position_manager.available_capital:.0f}")
             return None
 
+        # 计算买入数量
+        single_stock_quota = self.position_manager.total_capital / self.risk_params['max_position_count']
+        initial_capital = single_stock_quota * self.entry_params['initial_position_size']
+        quantity = int(initial_capital / current_price)
+
+        # 确保至少买入100股
+        if quantity < 100:
+            quantity = 100
+
         # 生成买入信号
         signal = {
             'type': 'BUY',
             'symbol': symbol,
             'price': current_price,
+            'quantity': quantity,
             'layer': 0,  # 初始建仓
             'timestamp': bar.timestamp if hasattr(bar, 'timestamp') else self.current_date,
             'metadata': {
                 'strategy': 'continuous_decline',
-                'reason': 'first_entry'
+                'reason': 'first_entry',
+                'quantity': quantity,
+                'value': quantity * current_price
             }
         }
 
@@ -273,6 +327,7 @@ class ContinuousDeclineStrategy(BaseStrategy):
                 'type': 'SELL',
                 'symbol': symbol,
                 'price': current_price,
+                'quantity': position.quantity,  # 添加quantity字段（卖出全部持仓）
                 'timestamp': bar.timestamp if hasattr(bar, 'timestamp') else self.current_date,
                 'metadata': {
                     'strategy': 'continuous_decline',
@@ -298,6 +353,7 @@ class ContinuousDeclineStrategy(BaseStrategy):
                     'type': 'SELL',
                     'symbol': symbol,
                     'price': current_price,
+                    'quantity': position.quantity,  # 添加quantity字段（卖出全部持仓）
                     'timestamp': bar.timestamp if hasattr(bar, 'timestamp') else self.current_date,
                     'metadata': {
                         'strategy': 'continuous_decline',
@@ -307,6 +363,73 @@ class ContinuousDeclineStrategy(BaseStrategy):
                 }
 
                 return {'signals': [signal]}
+
+        return None
+
+    def _check_add_position_signal(self, bar: Any, context: Any, position) -> Optional[Dict[str, Any]]:
+        """
+        检查加仓信号
+
+        在盘后已经检测到需要补仓，这里是实际的信号生成
+
+        Args:
+            bar: K线数据
+            context: 运行上下文
+            position: 当前持仓
+
+        Returns:
+            加仓信号或None
+        """
+        symbol = bar.symbol
+        current_price = bar.close
+        layer = position.layer_count
+        max_layers = self.entry_params.get('max_layers', 8)
+
+        # 检查是否还可以加仓
+        if layer >= max_layers:
+            return None
+
+        # 计算当前跌幅
+        cost_price = position.avg_price
+        decline_percent = (cost_price - current_price) / cost_price
+
+        # 计算应该补仓到的层数
+        # 每跌1%加一层
+        expected_layers = int(decline_percent / 0.01)
+
+        # 如果实际跌幅超过当前层数，触发补仓
+        if expected_layers > layer and layer < max_layers:
+            layer = expected_layers
+
+            # 计算加仓数量
+            single_stock_quota = self.position_manager.total_capital / self.risk_params['max_position_count']
+            add_capital = single_stock_quota * self.entry_params['position_percent_per_layer']
+            quantity = int(add_capital / current_price)
+
+            # 确保至少买入100股
+            if quantity < 100:
+                quantity = 100
+
+            # 生成加仓信号
+            self.logger.info(f"生成加仓信号: {symbol}, 当前跌幅={decline_percent:.2%}, 补仓层数={layer}")
+            self.logger.info(f"  成本价: {cost_price:.2f}, 当前价: {current_price:.2f}")
+            self.logger.info(f"  加仓数量: {quantity}")
+
+            signal = {
+                'type': 'BUY',
+                'symbol': symbol,
+                'price': current_price,
+                'quantity': quantity,  # 添加quantity字段
+                'layer': layer,  # 不是首次建仓，而是第layer层加仓
+                'timestamp': bar.timestamp if hasattr(bar, 'timestamp') else self.current_date,
+                'metadata': {
+                    'strategy': 'continuous_decline',
+                    'reason': 'add_position',
+                    'decline_percent': decline_percent
+                }
+            }
+
+            return {'signals': [signal]}
 
         return None
 
@@ -328,63 +451,15 @@ class ContinuousDeclineStrategy(BaseStrategy):
 
     def _check_add_positions(self, date: datetime, context: Any) -> None:
         """
-        检查是否需要补仓
+        检查是否需要补仓（已废弃，逻辑移至on_bar中的_check_add_position_signal）
 
-        规则：每跌1%补仓10%
+        该方法保留用于可能的扩展，目前实际补仓逻辑在on_bar中实时计算
 
         Args:
             date: 交易日期
             context: 运行上下文
         """
-        data_provider = context.get('data_provider')
-        if not data_provider:
-            return
-
-        for position in self.position_manager.get_all_positions():
-            symbol = position.symbol
-            layer = position.layer_count
-            max_layers = self.entry_params.get('max_layers', 8)
-
-            # 检查是否还可以加仓
-            if layer >= max_layers:
-                continue
-
-            # 获取最新价格
-            try:
-                # 获取最近几天的数据（包括今天）
-                end_date = date + timedelta(days=1)
-                start_date = date - timedelta(days=5)
-
-                df = data_provider.get_daily_bars(symbol, start_date, end_date)
-
-                if df is None or df.empty:
-                    continue
-
-                # 获取最新价格（当天）
-                current_price = df['close'].iloc[-1]
-                cost_price = position.avg_price
-
-                # 计算当前跌幅
-                decline_percent = (cost_price - current_price) / cost_price
-
-                # 计算应该补仓到的层数
-                # 每跌1%加一层
-                expected_layers = int(decline_percent / 0.01)
-
-                # 如果实际跌幅超过当前层数，触发补仓
-                if expected_layers > layer and layer < max_layers:
-                    add_layers = expected_layers - layer
-                    layer = expected_layers
-
-                    # 生成加仓信号（在下次交易执行）
-                    self.logger.info(f"触发补仓: {symbol}, 当前跌幅={decline_percent:.2%}, 补仓层数={layer}")
-                    self.logger.info(f"  成本价: {cost_price:.2f}, 当前价: {current_price:.2f}")
-
-                    # 实际加仓在on_bar中处理
-
-            except Exception as e:
-                self.logger.debug(f"检查补仓失败: {symbol} - {e}")
-                continue
+        pass
 
     def on_order(self, order: Any, context: Dict[str, Any]) -> None:
         """

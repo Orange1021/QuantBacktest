@@ -429,7 +429,9 @@ class LocalCSVDataProvider(DataProvider):
             return result
 
         except Exception as e:
-            logger.error(f"获取K线数据失败: {symbol} - {e}")
+            # Note: 改为debug级别，因为很多股票（如退市、停牌）没有数据是正常的
+            # 回测时会自动跳过这些股票，不需要error级别日志
+            logger.debug(f"获取K线数据失败: {symbol} - {e}")
             raise
 
     def get_market_cap(

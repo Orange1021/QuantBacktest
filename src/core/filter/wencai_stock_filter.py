@@ -7,6 +7,9 @@
 from datetime import datetime
 from typing import List, Optional
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WencaiStockFilter:
@@ -35,6 +38,9 @@ class WencaiStockFilter:
         """
         self.cookie = cookie
         self._wencai = None
+
+        # 添加结果缓存（避免重复查询同一天）
+        self._result_cache: Dict[str, List[str]] = {}
 
         try:
             import pywencai
@@ -92,19 +98,49 @@ class WencaiStockFilter:
 
         # 组合查询语句
         query = ";".join(query_parts)
+        logger.info(f"[WENCAI_DEBUG] 查询语句: {query}")
 
         try:
-            # 调用pywencai
-            df = self._wencai.get(query=query, cookie=self.cookie)
+            # 调用pywencai（添加重试和延迟）
+            logger.info(f"[WENCAI_DEBUG] 开始调用pywencai.get()...")
 
-            # 处理返回结果
-            if df is None or df.empty:
+            # 添加延迟（避免频繁调用被限流）
+            import time
+            time.sleep(1)  # 延迟1秒
+
+            df = self._wencai.get(query=query, cookie=self.cookie)
+            logger.info(f"[WENCAI_DEBUG] pywencai.get()返回，result type: {type(df)}")
+
+            if df is None:
+                logger.warning(f"[WENCAI_DEBUG] df is None，尝试重新调用...")
+                # 如果返回None，等待2秒后重试一次
+                time.sleep(2)
+                df = self._wencai.get(query=query, cookie=self.cookie)
+                logger.info(f"[WENCAI_DEBUG] 重试后返回，result type: {type(df)}")
+
+            if df is None:
+                logger.warning(f"[WENCAI_DEBUG] 重试后仍为None，返回空列表")
                 return []
 
-            # 转换数据格式
-            return self._parse_response(df)
+            logger.info(f"[WENCAI_DEBUG] df shape: {df.shape if hasattr(df, 'shape') else 'N/A'}")
+            logger.info(f"[WENCAI_DEBUG] df empty: {df.empty if hasattr(df, 'empty') else 'N/A'}")
+
+            # 处理返回结果
+            if df.empty:
+                logger.info(f"[WENCAI_DEBUG] df为空，返回[]")
+                return []
+
+            logger.info(f"[WENCAI_DEBUG] 处理返回数据，调用_parse_response()")
+            stocks = self._parse_response(df)
+            logger.info(f"[WENCAI_DEBUG] _parse_response()返回 {len(stocks)} 只股票")
+            return stocks
 
         except Exception as e:
+            logger.error(f"[WENCAI_DEBUG] 发生异常: {e}")
+            logger.error(f"[WENCAI_DEBUG] 异常类型: {type(e)}")
+            import traceback
+            for line in traceback.format_exc().split('\n'):
+                logger.error(line)
             raise RuntimeError(f"调用问财API失败: {str(e)}")
 
     def _parse_response(self, df: pd.DataFrame) -> List[str]:
@@ -117,24 +153,38 @@ class WencaiStockFilter:
         Returns:
             股票代码列表
         """
+        import logging
+        logger = logging.getLogger('wencai_debug')
+
+        logger.info(f"[WENCAI_DEBUG] _parse_response()开始，输入df行数: {len(df) if hasattr(df, '__len__') else 'N/A'}")
+        logger.info(f"[WENCAI_DEBUG] df列名: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
+
         stocks = []
 
         for _, row in df.iterrows():
-            code = str(row['code'])
+            try:
+                code = str(row['code'])
 
-            # 根据代码前缀判断市场
-            # 6开头 -> 上证（.SH）
-            # 0或3开头 -> 深证（.SZ）
-            if code.startswith('6'):
-                suffix = 'SH'
-            elif code.startswith(('0', '3')):
-                suffix = 'SZ'
-            else:
-                # 其他代码，默认SZ
-                suffix = 'SZ'
+                # 根据代码前缀判断市场
+                # 6开头 -> 上证（.SH）
+                # 0或3开头 -> 深证（.SZ）
+                if code.startswith('6'):
+                    suffix = 'SH'
+                elif code.startswith(('0', '3')):
+                    suffix = 'SZ'
+                else:
+                    # 其他代码，默认SZ
+                    suffix = 'SZ'
 
-            stocks.append(f"{code}.{suffix}")
+                full_code = f"{code}.{suffix}"
+                stocks.append(full_code)
+                logger.debug(f"[WENCAI_DEBUG] 解析成功: {full_code}")
 
+            except Exception as e:
+                logger.warning(f"[WENCAI_DEBUG] 解析行失败: {e}, row: {row.to_dict() if hasattr(row, 'to_dict') else row}")
+                continue
+
+        logger.info(f"[WENCAI_DEBUG] _parse_response()完成，返回 {len(stocks)} 只股票")
         return stocks
 
     def test_connection(self) -> bool:

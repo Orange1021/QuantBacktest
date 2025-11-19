@@ -9,10 +9,10 @@ strategy:
   # 选股参数
   filter_params:
     # 筛选器类型（stock_filter/wencai_filter）
-    filter_type: "wencai_filter"        # 使用问财筛选器（推荐，更智能）
+    filter_type: "wencai_filter"        # 使用问财筛选器（智能筛选）
 
     # 传统筛选器参数（filter_type=stock_filter时使用）
-    decline_days_threshold: 7          # 连续下跌天数阈值（修改为7天）
+    decline_days_threshold: 7          # 连续下跌天数阈值（7天）
     market_cap_threshold: 1000000000   # 最小市值（10亿，单位：元）
     stock_universe: "A_SHARE"          # 股票池：A股
     exclude_st:
@@ -45,6 +45,7 @@ strategy:
   risk_params:
     single_position_limit: 0.30        # 单票最大仓位30%
     total_position_limit: 0.80         # 总仓位最大80%
+    max_position_count: 1             # 最大持仓股票数量（调试时设为1，避免多次查询wencai）
     stop_loss_percent: 0.15            # 止损线15%
     daily_loss_limit: 0.05             # 单日最大亏损5%
     max_holding_days: 60               # 最大持仓天数（防止套牢）
@@ -60,16 +61,18 @@ strategy:
 
 # 数据配置
 data:
-  provider: "tushare"                  # 数据提供商（tushare/akshare/local）
-  tushare_token: "your_token_here"     # Tushare token（如使用）
-  local_data_dir: "data/raw"           # 本地数据目录（如使用）
+  # ⚠️ 注意：策略配置中的data部分会被source.yaml覆盖
+  # 如需修改数据源，请编辑: configs/data/source.yaml
+  provider: "local_csv"                # 数据提供商（local_csv: 本地CSV，速度最快）
+  tushare_token: "your_token_here"     # Tushare token（备用）
+  local_data_dir: "C:/Users/123/A股数据/个股数据"  # 本地CSV数据目录
   adjust_type: "qfq"                   # 复权类型（qfq: 前复权，hfq: 后复权）
   price_field: "close"                 # 使用收盘价作为决策依据
 
 # 回测配置
 backtest:
-  start_date: "2024-08-01"            # 回测开始日期
-  end_date: "2024-11-01"              # 回测结束日期
+  start_date: "2023-01-01"            # 回测开始日期 - 测试wencai数据
+  end_date: "2023-01-31"              # 回测结束日期 - 测试wencai数据
   symbols:                            # 回测标的
     type: "A_SHARE"                   # 类型：A_SHARE（全市场）/LIST（指定列表）/INDEX（指数成分股）
     list: []                          # 如type=LIST，填写具体的股票代码列表

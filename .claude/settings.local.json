@@ -14,7 +14,10 @@
       "Bash(timeout 90 python scripts/demo_data_provider.py:*)",
       "Bash(timeout:*)",
       "Bash(chcp:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(Select-String:*)",
+      "Bash($null)",
+      "Bash(iconv:*)"
     ],
     "deny": [],
     "ask": []
