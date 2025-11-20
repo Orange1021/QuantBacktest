@@ -1,0 +1,68 @@
+# 量化回测系统配置文件
+# 业务参数配置
+
+# 回测基本设置
+backtest:
+  start_date: "2024-01-01"        # 回测开始日期
+  end_date: "2024-12-31"          # 回测结束日期
+  benchmark: "000300.SH"          # 基准指数
+  initial_capital: 1000000.0      # 初始资金
+
+# 数据路径配置
+data:
+  csv_root_path: "C:/Users/123/A股数据/个股数据"  # CSV数据根路径
+  cache_path: "./cache"            # 缓存路径
+  output_path: "./output"          # 输出路径
+
+# 选股配置
+selector:
+  default_type: "wencai"           # 默认选股器类型
+  wencai:
+    retry_count: 3                 # 重试次数
+    sleep_time: 2                  # 休眠时间(秒)
+  tushare:
+    max_per_page: 5000             # 每页最大数量
+
+# 策略配置
+strategy:
+  name: "default_strategy"         # 策略名称
+  parameters:
+    lookback_period: 20            # 回看周期
+    rebalance_frequency: "monthly" # 调仓频率
+    max_positions: 10              # 最大持仓数
+    position_size_method: "equal_weight"  # 仓位分配方法
+
+# 风控配置
+risk:
+  max_position_ratio: 0.1         # 单只股票最大仓位比例
+  max_sector_ratio: 0.3           # 单行业最大仓位比例
+  stop_loss: -0.1                 # 止损阈值
+  take_profit: 0.2                 # 止盈阈值
+
+# 交易配置
+execution:
+  commission_rate: 0.0003         # 手续费率
+  slippage_rate: 0.001            # 滑点率
+  min_commission: 5.0             # 最小手续费
+
+# 日志配置
+logging:
+  level: "INFO"                   # 日志级别
+  file_path: "./logs/app.log"     # 日志文件路径
+  max_file_size: "10MB"           # 最大文件大小
+  backup_count: 5                 # 备份文件数量
+
+# 分析配置
+analysis:
+  performance_metrics:            # 性能指标
+    - "total_return"
+    - "annual_return"
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "win_rate"
+  
+  charts:
+    equity_curve: true            # 资金曲线图
+    drawdown: true               # 回撤图
+    returns_distribution: true   # 收益分布图
+    position_changes: true       # 持仓变化图
