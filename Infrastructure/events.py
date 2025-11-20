@@ -4,9 +4,10 @@
 """
 
 from dataclasses import dataclass
-from enum import Enum
 from datetime import datetime
 from typing import Optional
+
+from .enums import EventType, Direction, OrderType
 
 try:
     from DataManager.schema.bar import BarData
@@ -14,51 +15,34 @@ except ImportError:
     from schema.bar import BarData
 
 
-class EventType(Enum):
-    """事件类型枚举"""
-    MARKET = "MARKET"   # 行情推送
-    SIGNAL = "SIGNAL"   # 策略发出信号
-    ORDER = "ORDER"     # 账户发出订单
-    FILL = "FILL"       # 交易所回报成交
-
-
 @dataclass
 class MarketEvent:
     """
     行情事件
+    承载一根 K 线或一个 Tick，驱动系统向前推进一步
     当新的K线到达时触发
     """
-    bar: BarData
-    type: EventType = EventType.MARKET
-    timestamp: Optional[datetime] = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = self.bar.datetime
+    bar: BarData  # 这是我们在 DataManager 定义好的结构，包含 Open/High/Low/Close
+    type: EventType = EventType.MARKET  # 事件类型
 
 
 @dataclass
 class SignalEvent:
     """
     信号事件
-    策略计算后发出的交易意图
+    策略层发出的"建议"
+    注意：这里不包含具体的买卖股数，只包含意图
     """
-    symbol: str
-    direction: str      # "LONG" (做多) / "SHORT" (做空)
-    strength: float     # 信号强度 (1.0 代表全仓意愿，0.5 代表半仓意愿)
-    datetime: datetime  # 信号产生的时间
-    type: EventType = EventType.SIGNAL
-    timestamp: Optional[datetime] = None
-    price: Optional[float] = None  # 参考价格（可选）
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = self.datetime
+    symbol: str                    # 股票代码，如 "000001.SZ"
+    datetime: datetime             # 信号产生的时间
+    direction: Direction           # 买还是卖
+    strength: float                # 信号强度，1.0 表示强烈买入，0.5 观望
+    type: EventType = EventType.SIGNAL  # 事件类型
     
     def __str__(self) -> str:
         """字符串表示"""
         return (
-            f"SignalEvent: {self.symbol}, {self.direction}, "
+            f"SignalEvent: {self.symbol}, {self.direction.value}, "
             f"strength={self.strength:.2f}, time={self.datetime.strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
@@ -67,28 +51,21 @@ class SignalEvent:
 class OrderEvent:
     """
     订单事件
-    经过风控检查后，实际发出的下单指令
+    Portfolio 经过资金计算和风控检查后，发出的"确切指令"
     """
-    symbol: str
-    order_type: str     # "MARKET" (市价) / "LIMIT" (限价)
-    direction: str      # "BUY" / "SELL"
-    volume: int         # 具体的下单数量 (股数)
-    price: float = 0.0  # 只有限价单需要填
-    type: EventType = EventType.ORDER
-    datetime: Optional[datetime] = None
-    timestamp: Optional[datetime] = None
-    
-    def __post_init__(self):
-        if self.datetime is None:
-            self.datetime = datetime.now()
-        if self.timestamp is None:
-            self.timestamp = self.datetime
+    symbol: str                    # 股票代码
+    datetime: datetime             # 订单时间
+    order_type: OrderType          # 市价还是限价
+    direction: Direction           # 交易方向
+    volume: int                    # 关键：具体的股数，例如 1000 股，不能是金额
+    limit_price: float = 0.0       # 如果是限价单，必填；市价单为 0
+    type: EventType = EventType.ORDER  # 事件类型
     
     def __str__(self) -> str:
         """字符串表示"""
-        price_str = f"@{self.price:.2f}" if self.order_type == "LIMIT" else "MARKET"
+        price_str = f"@{self.limit_price:.2f}" if self.order_type == OrderType.LIMIT else "MARKET"
         return (
-            f"OrderEvent: {self.direction} {self.volume:,} {self.symbol} "
+            f"OrderEvent: {self.direction.value} {self.volume:,} {self.symbol} "
             f"{price_str}, time={self.datetime.strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
@@ -97,20 +74,16 @@ class OrderEvent:
 class FillEvent:
     """
     成交事件
-    模拟交易所成交后的回报
+    模拟交易所（Execution）撮合成功后返回的凭证
+    Portfolio 收到这个才能扣钱
     """
-    symbol: str
-    datetime: datetime
-    direction: str      # "BUY" / "SELL"
-    volume: int         # 实际成交数量
-    price: float        # 实际成交价格 (含滑点)
-    commission: float   # 手续费成本
-    type: EventType = EventType.FILL
-    timestamp: Optional[datetime] = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = self.datetime
+    symbol: str                    # 股票代码
+    datetime: datetime             # 实际成交时间，可能滞后于订单时间
+    direction: Direction           # 交易方向
+    volume: int                    # 实际成交数量，可能因为滑点或资金不足只成交了一半
+    price: float                   # 实际成交价，包含滑点影响
+    commission: float              # 产生的手续费金额
+    type: EventType = EventType.FILL  # 事件类型
     
     @property
     def trade_value(self) -> float:
@@ -120,7 +93,7 @@ class FillEvent:
     @property
     def net_value(self) -> float:
         """净成交金额（扣除手续费）"""
-        if self.direction == "BUY":
+        if self.direction in [Direction.BUY, Direction.LONG]:
             return self.trade_value + self.commission
         else:
             return self.trade_value - self.commission
@@ -128,7 +101,7 @@ class FillEvent:
     def __str__(self) -> str:
         """字符串表示"""
         return (
-            f"FillEvent: {self.direction} {self.volume:,} {self.symbol} "
+            f"FillEvent: {self.direction.value} {self.volume:,} {self.symbol} "
             f"@{self.price:.2f}, fee={self.commission:.2f}, "
             f"time={self.datetime.strftime('%Y-%m-%d %H:%M:%S')}"
         )

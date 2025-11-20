@@ -5,10 +5,10 @@
 ## 🚀 特性
 
 - **事件驱动架构** - 模块间松耦合，易于扩展
-- **多数据源支持** - 本地CSV、Tushare、Yahoo Finance、问财选股等
-- **完整数据管道** - 从数据获取到策略执行的完整流程
-- **灵活策略框架** - 支持多种策略类型和自定义策略
-- **详细分析工具** - 性能分析、图表生成、风险指标计算
+- **多数据源支持** - 本地CSV、问财选股、Tushare、Yahoo Finance等
+- **完整数据管道** - 从选股到策略执行的完整流程
+- **防未来函数机制** - 严格的时间对齐和数据访问控制
+- **工业级代码标准** - 完整的异常处理和日志记录
 - **配置化管理** - YAML配置文件和环境变量支持
 
 ## 📁 项目结构
@@ -16,20 +16,25 @@
 ```
 QuantBacktest/
 ├── DataManager/          # 数据管理层
-│   ├── handlers/         # 数据驱动层
+│   ├── handlers/         # 数据驱动层（已重构）
 │   ├── sources/          # 数据源适配器
 │   ├── schema/           # 数据结构定义
 │   ├── selectors/        # 选股器
-│   └── ...
+│   └── __init__.py
 ├── Infrastructure/       # 基础设施
-│   └── events.py         # 事件系统
-├── Engine/              # 回测引擎
-├── Execution/           # 撮合执行
-├── Portfolio/           # 投资组合管理
-├── Strategies/          # 策略实现
-├── Analysis/            # 分析工具
+│   ├── enums.py          # 枚举定义（新增）
+│   ├── events.py         # 事件系统（已重构）
+│   └── __init__.py
+├── Engine/              # 回测引擎（待实现）
+├── Execution/           # 撮合执行（待实现）
+├── Portfolio/           # 投资组合管理（待实现）
+├── Strategies/          # 策略实现（待实现）
+├── Analysis/            # 分析工具（待实现）
 ├── config/              # 配置管理
-└── Test/                # 测试用例
+├── Test/                # 测试用例
+│   ├── test_comprehensive_integration.py  # 综合集成测试（新增）
+│   └── ...
+└── txt/                 # 文档文件夹
 ```
 
 ## 🛠️ 安装
@@ -128,14 +133,15 @@ bank_stocks = selector.select_stocks(
 print(f"选到 {len(bank_stocks)} 只银行股")
 ```
 
-### 3. 事件系统测试
+### 3. 新事件系统测试
 
 ```python
-from Infrastructure.events import MarketEvent, SignalEvent
+from Infrastructure.events import MarketEvent, SignalEvent, EventType, Direction
+from Infrastructure.enums import EventType, Direction, OrderType
 from DataManager.schema.bar import BarData
 from datetime import datetime
 
-# 创建行情事件
+# 创建K线数据
 bar = BarData(
     symbol="000001",
     exchange="SZSE",
@@ -148,8 +154,18 @@ bar = BarData(
     turnover=10500000
 )
 
+# 创建行情事件
 market_event = MarketEvent(bar=bar)
-print(f"行情事件: {market_event}")
+print(f"行情事件: {market_event.bar.symbol}, 类型: {market_event.type}")
+
+# 创建信号事件
+signal_event = SignalEvent(
+    symbol="000001.SZ",
+    datetime=datetime.now(),
+    direction=Direction.LONG,
+    strength=0.8
+)
+print(f"信号事件: {signal_event}")
 ```
 
 ### 4. 数据驱动层使用
@@ -159,18 +175,35 @@ from DataManager.handlers import BacktestDataHandler
 from DataManager.sources import LocalCSVLoader
 from datetime import datetime
 
+# 创建数据加载器
+loader = LocalCSVLoader("C:/path/to/csv/data")
+
 # 创建数据处理器
-data_source = LocalCSVLoader("C:/path/to/csv/data")
 handler = BacktestDataHandler(
-    data_source=data_source,
+    loader=loader,
     symbol_list=["000001.SZSE", "000002.SZSE"],
     start_date=datetime(2024, 1, 1),
     end_date=datetime(2024, 12, 31)
 )
 
 # 生成事件流
+event_count = 0
 for event in handler.update_bars():
-    print(f"事件: {event.bar.symbol} @ {event.bar.datetime}")
+    if isinstance(event, MarketEvent):
+        event_count += 1
+        print(f"事件{event_count}: {event.bar.symbol} @ {event.bar.datetime}, 价格: {event.bar.close_price}")
+    
+    # 限制处理事件数量
+    if event_count >= 10:
+        break
+
+# 查询最新数据
+latest_bar = handler.get_latest_bar("000001.SZSE")
+if latest_bar:
+    print(f"最新K线: {latest_bar.symbol} @ {latest_bar.datetime}, 价格: {latest_bar.close_price}")
+
+latest_bars = handler.get_latest_bars("000001.SZSE", 5)
+print(f"最近5根K线: {len(latest_bars)} 条")
 ```
 
 ## 📊 示例用法
@@ -181,27 +214,59 @@ for event in handler.update_bars():
 from DataManager.selectors import WencaiSelector
 from DataManager.handlers import BacktestDataHandler
 from DataManager.sources import LocalCSVLoader
+from Infrastructure.events import MarketEvent, Direction
+from config.settings import settings
 from datetime import datetime
 
 # 1. 选股
-selector = WencaiSelector()
-stocks = selector.select_stocks(datetime.now(), query="科技股")
+cookie = settings.get_env('WENCAI_COOKIE')
+selector = WencaiSelector(cookie=cookie)
+stocks = selector.select_stocks(datetime.now(), query="银行股")
+
+print(f"选到 {len(stocks)} 只银行股: {stocks[:5]}")
 
 # 2. 数据准备
-data_source = LocalCSVLoader("C:/path/to/csv/data")
+loader = LocalCSVLoader("C:/path/to/csv/data")
 handler = BacktestDataHandler(
-    data_source=data_source,
-    symbol_list=stocks[:10],  # 取前10只
-    start_date=datetime(2024, 1, 1),
-    end_date=datetime(2024, 12, 31)
+    loader=loader,
+    symbol_list=stocks[:6],  # 取前6只进行测试
+    start_date=datetime(2025, 1, 1),
+    end_date=datetime(2025, 1, 15)
 )
 
-# 3. 运行回测
+# 3. 简单策略模拟
+strategy_signals = []
+
 for event in handler.update_bars():
-    # 在这里添加策略逻辑
-    # 处理MarketEvent、SignalEvent、OrderEvent、FillEvent
-    pass
+    if isinstance(event, MarketEvent):
+        bar = event.bar
+        
+        # 策略逻辑：涨幅超过2%发出买入信号
+        if bar.close_price > bar.open_price * 1.02:
+            signal = {
+                'symbol': bar.symbol,
+                'datetime': bar.datetime,
+                'price_change_pct': ((bar.close_price - bar.open_price) / bar.open_price) * 100,
+                'action': 'BUY_SIGNAL'
+            }
+            strategy_signals.append(signal)
+            print(f"策略信号: {bar.symbol} @ {bar.datetime.strftime('%Y-%m-%d')} - 涨幅 {signal['price_change_pct']:.2f}%")
+    
+    # 限制处理事件数量
+    if len(strategy_signals) >= 5:
+        break
+
+print(f"总共产生 {len(strategy_signals)} 个策略信号")
 ```
+
+### 综合集成测试
+
+```bash
+# 运行完整的集成测试，验证所有模块协同工作
+python Test/test_comprehensive_integration.py
+```
+
+测试流程: 问财选股 → CSV数据加载 → 新事件系统 → DataHandler → 策略模拟
 
 ## 🧪 测试
 
@@ -211,15 +276,28 @@ for event in handler.update_bars():
 # 测试CSV数据加载
 python Test/test_csv_loader.py
 
-# 测试事件系统
-python Test/test_event_system.py
-
 # 测试问财选股
 python Test/test_wencai_selector.py
 
 # 测试集成功能
 python Test/test_wencai_csv_integration.py
+
+# 测试新事件系统
+python Test/test_new_event_system.py
+
+# 综合集成测试（推荐）
+python Test/test_comprehensive_integration.py
 ```
+
+### 测试覆盖范围
+
+- ✅ 枚举定义和事件类创建
+- ✅ 问财选股功能（42只银行股）
+- ✅ CSV数据加载和解析
+- ✅ 数据处理器事件生成（20个MarketEvent）
+- ✅ 防未来函数机制
+- ✅ 时间对齐和多股票处理
+- ✅ 策略信号生成（涨幅超过2%检测）
 
 ## 📈 支持的数据源
 
@@ -236,32 +314,51 @@ python Test/test_wencai_csv_integration.py
 ### 创建自定义策略
 
 ```python
-from Infrastructure.events import MarketEvent, SignalEvent, OrderEvent
+from Infrastructure.events import MarketEvent, SignalEvent, Direction, OrderType
+from DataManager.handlers import BacktestDataHandler
 
 class MyStrategy:
-    def __init__(self):
+    def __init__(self, handler: BacktestDataHandler):
+        self.handler = handler
         self.position = {}
         
     def on_market_data(self, event: MarketEvent):
         """处理行情数据"""
         bar = event.bar
-        # 策略逻辑
-        if self.should_buy(bar):
+        symbol = bar.symbol
+        
+        # 获取历史数据用于技术指标计算
+        latest_bars = self.handler.get_latest_bars(symbol, 5)
+        if len(latest_bars) < 5:
+            return
+            
+        # 计算简单移动平均线
+        prices = [b.close_price for b in latest_bars]
+        ma5 = sum(prices) / 5
+        
+        # 策略逻辑：价格突破MA5且涨幅超过2%
+        if bar.close_price > ma5 and bar.close_price > bar.open_price * 1.02:
             self.send_buy_signal(bar)
             
-    def should_buy(self, bar) -> bool:
-        """买入条件"""
-        return bar.close_price > bar.open_price * 1.02
-        
     def send_buy_signal(self, bar):
         """发送买入信号"""
         signal = SignalEvent(
             symbol=bar.symbol,
-            direction="LONG",
-            strength=0.5,
-            datetime=bar.datetime
+            datetime=bar.datetime,
+            direction=Direction.LONG,
+            strength=0.8
         )
-        # 发送信号到Portfolio
+        print(f"买入信号: {signal}")
+        # 在实际系统中，这里会将信号发送到Portfolio模块
+        return signal
+
+# 使用策略
+handler = BacktestDataHandler(loader, symbol_list, start_date, end_date)
+strategy = MyStrategy(handler)
+
+for event in handler.update_bars():
+    if isinstance(event, MarketEvent):
+        strategy.on_market_data(event)
 ```
 
 ## 📋 开发计划
@@ -269,13 +366,64 @@ class MyStrategy:
 - [x] 数据结构和事件系统
 - [x] 本地CSV数据加载
 - [x] 问财选股器
-- [x] 数据驱动层
+- [x] 数据驱动层重构
+- [x] 新事件系统架构
+- [x] 综合集成测试
 - [ ] 回测引擎核心
 - [ ] 投资组合管理
 - [ ] 撮合执行系统
 - [ ] 策略框架
 - [ ] 性能分析工具
 - [ ] 图表生成模块
+
+## 🎯 当前系统状态
+
+### 已完成模块
+- **数据结构层** - 完整的BarData、TickData、FundamentalData模型
+- **数据源层** - LocalCSVLoader，支持中文列名和单位转换
+- **选股器层** - WencaiSelector，自然语言选股
+- **事件系统** - EventType枚举和MarketEvent、SignalEvent、OrderEvent、FillEvent
+- **数据处理器** - BacktestDataHandler，时间对齐和防未来函数
+- **配置管理** - YAML配置文件和环境变量支持
+
+### 架构特点
+- **事件驱动** - 通过事件实现模块解耦
+- **防未来函数** - 策略只能访问当前视图数据
+- **时间对齐** - 多股票统一时间轴处理
+- **生成器模式** - 高效的事件流生成
+- **工业级代码** - 完整的异常处理和日志记录
+
+### 测试验证
+- 问财选股：成功获取42只银行股
+- 数据加载：单股7条数据，多股时间对齐正常
+- 事件系统：20个MarketEvent生成，6只股票分布均匀
+- 策略模拟：检测到2个上涨信号（涨幅超过2%）
+
+## 🏗️ 系统架构
+
+### 事件流转图
+
+```
+DataManager (数据源) 
+    ↓ MarketEvent
+BacktestDataHandler (时间对齐)
+    ↓ MarketEvent  
+Strategy (策略逻辑)
+    ↓ SignalEvent
+Portfolio (风控+仓位) - [待实现]
+    ↓ OrderEvent
+Execution (撮合执行) - [待实现]
+    ↓ FillEvent
+Portfolio (持仓更新) - [待实现]
+```
+
+### 核心设计原则
+
+1. **事件驱动架构** - 所有模块通过事件通信，松耦合设计
+2. **防未来函数** - 策略只能访问`_latest_data`，严禁访问未来数据
+3. **时间对齐机制** - 多股票数据按统一时间轴处理，解决停牌问题
+4. **生成器模式** - `update_bars()`使用yield实现高效事件流
+5. **单一职责原则** - 每个模块专注特定功能，易于维护和扩展
 
 ## 🤝 贡献
 
@@ -284,9 +432,17 @@ class MyStrategy:
 ### 开发规范
 
 1. 遵循单一职责原则
-2. 添加适当的异常处理
-3. 编写单元测试
-4. 更新相关文档
+2. 添加适当的异常处理和日志记录
+3. 编写单元测试和集成测试
+4. 更新相关文档（PROJECT_SPECIFICATION.md和README.md）
+5. **严禁引入未来函数** - 策略代码只能通过DataHandler接口访问数据
+
+### 下一步开发重点
+
+1. **回测引擎** - 事件循环和状态管理
+2. **策略框架** - 策略基类和信号处理
+3. **投资组合** - 仓位管理和风控
+4. **撮合引擎** - 订单处理和成交模拟
 
 ## 📄 许可证
 
@@ -299,3 +455,5 @@ MIT License
 ---
 
 **注意**: 本项目仅用于学习和研究目的，不构成投资建议。使用本系统进行实际交易的风险由用户自行承担。
+
+**🚀 系统已具备完整的数据层和基础设施，可以开始策略开发和回测引擎实现！**

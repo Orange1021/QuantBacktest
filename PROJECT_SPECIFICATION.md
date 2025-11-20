@@ -14,20 +14,9 @@ QuantBacktest/
 │   ├── settings.py               # 配置读取类
 │   └── __init__.py
 ├── DataManager/                  # 数据管理模块
-│   ├── api.py                    # 数据管理对外接口
 │   ├── handlers/                 # 数据驱动层
-│   │   ├── handler.py            # 数据处理器实现
+│   │   ├── handler.py            # 数据处理器实现（已重构）
 │   │   └── __init__.py
-│   ├── feeds/                    # 数据供应层
-│   │   ├── base_feed.py          # 供应器基类
-│   │   ├── lazy_feed.py          # 懒加载供应器
-│   │   ├── mem_feed.py           # 内存供应器
-│   │   └── __init__.py
-│   ├── processors/               # 数据处理层
-│   │   ├── adjuster.py           # 复权处理器
-│   │   ├── cleaner.py            # 数据清洗器
-│   │   ├── merger.py             # 数据合并器
-│   │   └── resampler.py          # 重采样器
 │   ├── schema/                   # 数据结构定义
 │   │   ├── base.py               # 基础数据类
 │   │   ├── bar.py                # K线数据类
@@ -46,15 +35,10 @@ QuantBacktest/
 │   │   ├── local_csv.py          # 本地CSV数据源
 │   │   ├── tushare.py            # Tushare数据源
 │   │   └── yfinance.py           # Yahoo Finance数据源
-│   ├── storage/                  # 存储引擎
-│   │   ├── base_store.py         # 存储基类
-│   │   ├── csv_store.py          # CSV存储
-│   │   ├── hdf5_store.py         # HDF5存储
-│   │   ├── influx_store.py       # InfluxDB存储
-│   │   └── mysql_store.py        # MySQL存储
 │   └── __init__.py
 ├── Infrastructure/               # 基础设施模块
-│   ├── events.py                 # 事件系统定义
+│   ├── enums.py                  # 枚举定义（新增）
+│   ├── events.py                 # 事件系统定义（已重构）
 │   └── __init__.py
 ├── Engine/                       # 回测引擎模块（待实现）
 ├── Execution/                    # 撮合执行模块（待实现）
@@ -63,9 +47,9 @@ QuantBacktest/
 ├── Analysis/                     # 分析模块（待实现）
 ├── Test/                         # 测试模块
 │   ├── test_csv_loader.py        # CSV加载器测试
-│   ├── test_event_system.py      # 事件系统测试
 │   ├── test_wencai_csv_integration.py  # 集成测试
-│   └── ...
+│   ├── test_new_event_system.py  # 新事件系统测试（新增）
+│   └── test_comprehensive_integration.py  # 综合集成测试（新增）
 └── txt/                          # 文档文件夹
 ```
 
@@ -418,52 +402,74 @@ class BacktestDataHandler(BaseDataHandler):
 
 ### 3. 基础设施模块 (Infrastructure/)
 
-#### Infrastructure/events.py
+#### Infrastructure/enums.py
 ```python
 class EventType(Enum):
     """事件类型枚举"""
     枚举值:
-        - MARKET = "MARKET"      # 行情推送
-        - SIGNAL = "SIGNAL"      # 策略发出信号
-        - ORDER = "ORDER"        # 账户发出订单
-        - FILL = "FILL"          # 交易所回报成交
+        - MARKET = "MARKET"      # 行情来了（由 DataManager 发出）
+        - SIGNAL = "SIGNAL"      # 策略产生想法了（由 Strategies 发出）
+        - ORDER = "ORDER"        # 风控通过，准备下单了（由 Portfolio 发出）
+        - FILL = "FILL"          # 交易所成交了（由 Execution 发出）
+        - ERROR = "ERROR"        # 系统报错（可选，用于异常处理）
 
+class Direction(Enum):
+    """交易方向枚举"""
+    枚举值:
+        - LONG = "LONG"          # 做多/买入
+        - BUY = "BUY"            # 买入（与LONG同义）
+        - SHORT = "SHORT"        # 做空/卖出
+        - SELL = "SELL"          # 卖出（与SHORT同义）
+
+class OrderType(Enum):
+    """订单类型枚举"""
+    枚举值:
+        - MARKET = "MARKET"      # 市价单（回测最常用）
+        - LIMIT = "LIMIT"        # 限价单（需要指定价格）
+```
+
+#### Infrastructure/events.py
+```python
 @dataclass
 class MarketEvent:
     """行情事件"""
+    描述: 承载一根 K 线或一个 Tick，驱动系统向前推进一步
+    
     属性:
         - bar: BarData                              # 携带具体的K线数据
         - type: EventType = EventType.MARKET       # 事件类型
-        - timestamp: Optional[datetime] = None     # 时间戳
-    
-    方法:
-        - __post_init__()                          # 设置时间戳
 
 @dataclass
 class SignalEvent:
     """信号事件"""
+    描述: 策略层发出的"建议"，注意：这里不包含具体的买卖股数，只包含意图
+    
     属性:
-        - symbol: str                              # 股票代码
-        - direction: str                           # 交易方向 "LONG"/"SHORT"
-        - strength: float                          # 信号强度
-        - datetime: datetime                        # 信号产生时间
+        - symbol: str                              # 股票代码，如 "000001.SZ"
+        - datetime: datetime                       # 信号产生的时间
+        - direction: Direction                     # 买还是卖
+        - strength: float                          # 信号强度，1.0 表示强烈买入，0.5 观望
         - type: EventType = EventType.SIGNAL       # 事件类型
-        - timestamp: Optional[datetime] = None     # 时间戳
-        - price: Optional[float] = None            # 参考价格
     
     方法:
-        - __post_init__()                          # 设置时间戳
         - __str__() -> str                         # 字符串表示
 
 @dataclass
 class OrderEvent:
     """订单事件"""
+    描述: Portfolio 经过资金计算和风控检查后，发出的"确切指令"
+    
     属性:
         - symbol: str                              # 股票代码
-        - order_type: str                          # 订单类型 "MARKET"/"LIMIT"
-        - direction: str                           # 交易方向 "BUY"/"SELL"
-        - volume: int                              # 下单数量（股数）
-        - price: float = 0.0                       # 限价单价格
+        - datetime: datetime                       # 订单时间
+        - order_type: OrderType                    # 市价还是限价
+        - direction: Direction                     # 交易方向
+        - volume: int                              # 关键：具体的股数，例如 1000 股，不能是金额
+        - limit_price: float = 0.0                 # 如果是限价单，必填；市价单为 0
+        - type: EventType = EventType.ORDER       # 事件类型
+    
+    方法:
+        - __str__() -> str                         # 字符串表示
         - type: EventType = EventType.ORDER       # 事件类型
         - datetime: Optional[datetime] = None     # 订单时间
         - timestamp: Optional[datetime] = None     # 时间戳
@@ -475,21 +481,78 @@ class OrderEvent:
 @dataclass
 class FillEvent:
     """成交事件"""
+    描述: 模拟交易所（Execution）撮合成功后返回的凭证，Portfolio 收到这个才能扣钱
+    
     属性:
         - symbol: str                              # 股票代码
-        - datetime: datetime                        # 成交时间
-        - direction: str                           # 交易方向 "BUY"/"SELL"
-        - volume: int                              # 实际成交数量
-        - price: float                             # 实际成交价格（含滑点）
-        - commission: float                        # 手续费成本
+        - datetime: datetime                       # 实际成交时间，可能滞后于订单时间
+        - direction: Direction                     # 交易方向
+        - volume: int                              # 实际成交数量，可能因为滑点或资金不足只成交了一半
+        - price: float                             # 实际成交价，包含滑点影响
+        - commission: float                        # 产生的手续费金额
         - type: EventType = EventType.FILL         # 事件类型
-        - timestamp: Optional[datetime] = None     # 时间戳
     
     方法:
-        - __post_init__()                          # 设置时间戳
         - trade_value (property) -> float          # 成交金额
         - net_value (property) -> float            # 净成交金额（扣除手续费）
         - __str__() -> str                         # 字符串表示
+```
+
+### 4. 数据处理器模块 (DataManager/handlers/)
+
+#### DataManager/handlers/handler.py
+```python
+class BaseDataHandler(ABC):
+    """数据处理器抽象基类"""
+    职责: 定义数据处理器对外的标准接口，确保策略层调用数据的方式统一
+    
+    抽象方法:
+        - get_latest_bar(self, symbol: str) -> Optional[BarData]
+            # 获取指定股票在"当前回测时间点"的最新一根 K 线
+            # 用途：策略判断当前价格（如 bar.close_price）时使用
+        
+        - get_latest_bars(self, symbol: str, n: int = 1) -> List[BarData]
+            # 获取指定股票截止到"当前回测时间点"的最近 N 根 K 线
+            # 用途：策略计算技术指标（如计算 MA5 需要最近 5 根 Bar）
+        
+        - update_bars(self) -> Generator
+            # 驱动系统时间流动的生成器
+            # 行为：每次调用 next()，时间前进一步，并返回一个新的 MarketEvent
+
+class BacktestDataHandler(BaseDataHandler):
+    """专用于历史回测，处理多只股票的时间对齐，维护"最新数据视图"以防止未来函数"""
+    
+    属性:
+        - loader: BaseDataSource                   # 数据加载器实例（如 LocalCSVLoader）
+        - symbol_list: List[str]                   # 需要回测的股票代码列表
+        - start_date, end_date: datetime           # 回测起止时间
+        - _data_cache: Dict[str, List[BarData]]    # 全量数据缓存：在初始化时一次性把所有 CSV 数据读入这里
+        - _timeline: List[datetime]                # 统一时间轴：所有股票时间戳的并集，并按升序排列
+        - _latest_data: Dict[str, List[BarData]]   # 当前视图缓存：随着时间推进，把 _data_cache 里的数据一根根搬运到这里
+    
+    方法:
+        - __init__(loader, symbol_list, start_date, end_date)
+            # 初始化数据处理器，调用 _load_all_data()
+        
+        - _load_all_data() (私有方法)
+            # 1. 遍历 symbol_list，调用 loader.load_bar_data()
+            # 2. 将加载结果存入 _data_cache
+            # 3. 同时收集所有 BarData 的时间戳，去重、排序，生成 _timeline
+        
+        - update_bars() -> Generator (核心逻辑)
+            # 外层循环：遍历 _timeline 中的每一个 timestamp
+            # 内层循环：检查每个 symbol 在 _data_cache 中是否存在该 timestamp 的数据
+            #     如果有：
+            #         1. 将该 BarData 追加到 _latest_data[symbol] 列表末尾
+            #         2. yield MarketEvent(bar) (向外抛出事件)
+            #     如果没有（停牌）：跳过，不产生事件
+        
+        - get_latest_bar(symbol: str) -> Optional[BarData]
+            # 读取 self._latest_data[symbol] 的最后一个元素，如果列表为空，返回 None
+        
+        - get_latest_bars(symbol: str, n: int = 1) -> List[BarData]
+            # 读取 self._latest_data[symbol] 的最后 n 个元素，返回列表切片
+```
 ```
 
 ## 依赖关系
@@ -534,6 +597,67 @@ DataManager.selectors → Infrastructure.events
 2. 实现数据处理逻辑
 3. 在相应位置注册使用
 
+## 开发计划
+
+- [x] 数据结构和事件系统
+- [x] 本地CSV数据加载
+- [x] 问财选股器
+- [x] 数据驱动层重构
+- [x] 新事件系统架构
+- [x] 综合集成测试
+- [ ] 回测引擎核心
+- [ ] 投资组合管理
+- [ ] 撮合执行系统
+- [ ] 策略框架
+- [ ] 性能分析工具
+- [ ] 图表生成模块
+
+## 测试验证
+
+### 测试模块
+- `test_csv_loader.py` - CSV数据加载测试
+- `test_wencai_csv_integration.py` - 问财选股与CSV集成测试
+- `test_new_event_system.py` - 新事件系统测试
+- `test_comprehensive_integration.py` - 综合集成测试
+
+### 测试覆盖范围
+- ✅ 枚举定义和事件类创建
+- ✅ 问财选股功能
+- ✅ CSV数据加载和解析
+- ✅ 数据处理器事件生成
+- ✅ 防未来函数机制
+- ✅ 时间对齐和多股票处理
+- ✅ 完整流程模拟（选股→数据加载→事件生成→策略信号）
+
+### 测试结果
+- 问财选股：成功获取42只银行股
+- 数据加载：单股7条数据，多股时间对齐正常
+- 事件系统：20个MarketEvent生成，6只股票分布均匀
+- 策略模拟：检测到2个上涨信号（涨幅超过2%）
+
+## 当前系统状态
+
+### 已完成模块
+1. **数据结构层** - 完整的BarData、TickData、FundamentalData模型
+2. **数据源层** - LocalCSVLoader，支持中文列名和单位转换
+3. **选股器层** - WencaiSelector，自然语言选股
+4. **事件系统** - EventType枚举和MarketEvent、SignalEvent、OrderEvent、FillEvent
+5. **数据处理器** - BacktestDataHandler，时间对齐和防未来函数
+6. **配置管理** - YAML配置文件和环境变量支持
+
+### 架构特点
+- **事件驱动** - 通过事件实现模块解耦
+- **防未来函数** - 策略只能访问当前视图数据
+- **时间对齐** - 多股票统一时间轴处理
+- **生成器模式** - 高效的事件流生成
+- **工业级代码** - 完整的异常处理和日志记录
+
+### 下一步开发重点
+1. **回测引擎** - 事件循环和状态管理
+2. **策略框架** - 策略基类和信号处理
+3. **投资组合** - 仓位管理和风控
+4. **撮合引擎** - 订单处理和成交模拟
+
 ## 注意事项
 
 1. 所有价格相关字段使用 `float` 类型
@@ -542,3 +666,5 @@ DataManager.selectors → Infrastructure.events
 4. 所有异常处理都要记录日志
 5. 数据验证在 `__post_init__` 方法中进行
 6. 扩展字段统一使用 `extra` 字典存储
+7. **防未来函数**：策略只能访问`_latest_data`，严禁直接访问`_data_cache`
+8. **事件类型**：严格区分SignalEvent（意图）和OrderEvent（具体指令）
