@@ -84,6 +84,9 @@ class BacktestDataHandler(BaseDataHandler):
         # 策略只能查这个缓存
         self._latest_data: Dict[str, List[BarData]] = {}
         
+        # 当前时间指针
+        self.current_time_index = 0
+        
         # 初始化数据
         self._load_all_data()
 
@@ -169,7 +172,10 @@ class BacktestDataHandler(BaseDataHandler):
         """
         self.logger.info("开始推送行情事件")
         
-        for timestamp in self._timeline:
+        for i, timestamp in enumerate(self._timeline):
+            # 更新当前时间指针
+            self.current_time_index = i + 1
+            
             # 内层循环：检查每个股票在该时间点是否有数据
             for symbol in self.symbol_list:
                 if symbol not in self._data_cache:
@@ -220,3 +226,14 @@ class BacktestDataHandler(BaseDataHandler):
         
         # 返回最后n个元素
         return self._latest_data[symbol][-n:]
+    
+    def get_current_time(self) -> Optional[datetime]:
+        """
+        获取当前回测时间
+        
+        Returns:
+            当前回测时间点，如果还没有开始处理则返回None
+        """
+        if self.current_time_index > 0 and self.current_time_index <= len(self._timeline):
+            return self._timeline[self.current_time_index - 1]
+        return None

@@ -25,10 +25,10 @@ QuantBacktest/
 │   ├── enums.py          # 枚举定义（新增）
 │   ├── events.py         # 事件系统（已重构）
 │   └── __init__.py
-├── Engine/              # 回测引擎（待实现）
+├── Engine/              # 回测引擎（已完成）
 ├── Execution/           # 撮合执行（待实现）
-├── Portfolio/           # 投资组合管理（待实现）
-├── Strategies/          # 策略实现（待实现）
+├── Portfolio/           # 投资组合管理（已完成）
+├── Strategies/          # 策略实现（已完成）
 ├── Analysis/            # 分析工具（待实现）
 ├── config/              # 配置管理
 ├── Test/                # 测试用例
@@ -95,7 +95,137 @@ selector:
 
 ## 🎯 快速开始
 
-### 1. 测试本地数据加载
+### 1. 完整回测流程
+
+```python
+from Engine.engine import BacktestEngine
+from Strategies.simple_strategy import SimpleMomentumStrategy
+from Portfolio.portfolio import BacktestPortfolio
+from DataManager.handlers import BacktestDataHandler
+from DataManager.sources import LocalCSVLoader
+from collections import deque
+from datetime import datetime
+
+# 1. 准备数据
+loader = LocalCSVLoader("C:/path/to/csv/data")
+data_handler = BacktestDataHandler(
+    loader=loader,
+    symbol_list=["000001.SZSE", "000002.SZSE"],
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 1, 31)
+)
+
+# 2. 创建策略
+event_queue = deque()
+strategy = SimpleMomentumStrategy(data_handler, event_queue)
+
+# 3. 创建投资组合
+portfolio = BacktestPortfolio(data_handler, initial_capital=100000.0)
+
+# 4. 创建执行器（简单市价执行）
+class SimpleExecution:
+    def execute_order(self, order_event):
+        from Infrastructure.events import FillEvent
+        from Infrastructure.enums import Direction
+        
+        # 简单市价成交模拟
+        latest_bar = data_handler.get_latest_bar(order_event.symbol)
+        if latest_bar:
+            # 计算手续费 (0.03%)
+            commission = order_event.volume * latest_bar.close_price * 0.0003
+            
+            return FillEvent(
+                symbol=order_event.symbol,
+                datetime=latest_bar.datetime,
+                direction=order_event.direction,
+                volume=order_event.volume,
+                price=latest_bar.close_price,
+                commission=commission
+            )
+        return None
+
+execution = SimpleExecution()
+
+# 5. 创建并运行回测引擎
+engine = BacktestEngine(data_handler, strategy, portfolio, execution)
+engine.run()
+
+# 6. 查看回测结果
+portfolio_info = portfolio.get_portfolio_info()
+print(f"总资产: {portfolio_info['total_equity']:,.2f}")
+print(f"总收益率: {portfolio_info['return_rate']:.2f}%")
+print(f"总交易次数: {portfolio_info['total_trades']}")
+```
+
+### 2. 自定义策略开发
+
+```python
+from Strategies.base import BaseStrategy
+from Infrastructure.events import MarketEvent, Direction
+
+class MyCustomStrategy(BaseStrategy):
+    def on_market_data(self, event: MarketEvent) -> None:
+        """处理行情数据，实现策略逻辑"""
+        bar = event.bar
+        symbol = bar.symbol
+        
+        # 获取最近5根K线计算技术指标
+        bars = self.get_latest_bars(symbol, 5)
+        if len(bars) < 5:
+            return
+        
+        # 计算简单移动平均线
+        sma5 = self.calculate_sma(symbol, 5)
+        if sma5 is None:
+            return
+        
+        # 策略逻辑：价格突破SMA5时买入
+        if bar.close_price > sma5:
+            # 检查当前是否有持仓
+            current_position = self.get_current_price(symbol)  # 这里需要扩展BaseStrategy
+            
+            # 策略信号：突破买入
+            self.send_signal(symbol, Direction.LONG, strength=0.8)
+        
+        # 策略逻辑：价格跌破SMA5时卖出
+        elif bar.close_price < sma5:
+            self.send_signal(symbol, Direction.SHORT, strength=0.8)
+
+# 使用自定义策略
+strategy = MyCustomStrategy(data_handler, event_queue)
+```
+
+### 3. 投资组合管理
+
+```python
+from Portfolio.portfolio import BacktestPortfolio
+from Infrastructure.events import SignalEvent, Direction
+from datetime import datetime
+
+# 创建投资组合
+portfolio = BacktestPortfolio(data_handler, initial_capital=100000.0)
+
+# 模拟信号事件
+buy_signal = SignalEvent(
+    symbol="000001.SZSE",
+    datetime=datetime.now(),
+    direction=Direction.LONG,
+    strength=0.8
+)
+
+# 处理信号，生成订单
+order_event = portfolio.process_signal(buy_signal)
+if order_event:
+    print(f"生成订单: {order_event.symbol} {order_event.direction.value} {order_event.volume}股")
+
+# 查看投资组合状态
+portfolio_info = portfolio.get_portfolio_info()
+print(f"当前现金: {portfolio_info['current_cash']:,.2f}")
+print(f"总资产: {portfolio_info['total_equity']:,.2f}")
+print(f"持仓数量: {portfolio_info['positions_count']}")
+```
+
+### 4. 测试本地数据加载
 
 ```python
 from DataManager.sources import LocalCSVLoader
@@ -369,10 +499,10 @@ for event in handler.update_bars():
 - [x] 数据驱动层重构
 - [x] 新事件系统架构
 - [x] 综合集成测试
-- [ ] 回测引擎核心
-- [ ] 投资组合管理
+- [x] 回测引擎核心
+- [x] 策略框架
+- [x] 投资组合管理
 - [ ] 撮合执行系统
-- [ ] 策略框架
 - [ ] 性能分析工具
 - [ ] 图表生成模块
 
@@ -385,6 +515,9 @@ for event in handler.update_bars():
 - **事件系统** - EventType枚举和MarketEvent、SignalEvent、OrderEvent、FillEvent
 - **数据处理器** - BacktestDataHandler，时间对齐和防未来函数
 - **配置管理** - YAML配置文件和环境变量支持
+- **回测引擎** - BacktestEngine，事件驱动架构核心
+- **策略框架** - BaseStrategy抽象基类和SimpleMomentumStrategy示例
+- **投资组合管理** - BacktestPortfolio，A股规则的资金和持仓管理
 
 ### 架构特点
 - **事件驱动** - 通过事件实现模块解耦
@@ -408,13 +541,13 @@ DataManager (数据源)
     ↓ MarketEvent
 BacktestDataHandler (时间对齐)
     ↓ MarketEvent  
-Strategy (策略逻辑)
+Strategy (策略逻辑) ✅
     ↓ SignalEvent
-Portfolio (风控+仓位) - [待实现]
+Portfolio (风控+仓位) ✅
     ↓ OrderEvent
 Execution (撮合执行) - [待实现]
     ↓ FillEvent
-Portfolio (持仓更新) - [待实现]
+Portfolio (持仓更新) ✅
 ```
 
 ### 核心设计原则
@@ -439,10 +572,10 @@ Portfolio (持仓更新) - [待实现]
 
 ### 下一步开发重点
 
-1. **回测引擎** - 事件循环和状态管理
-2. **策略框架** - 策略基类和信号处理
-3. **投资组合** - 仓位管理和风控
-4. **撮合引擎** - 订单处理和成交模拟
+1. **撮合执行系统** - 订单处理和成交模拟
+2. **性能分析工具** - 回测结果统计和可视化
+3. **图表生成模块** - 资金曲线和交易信号图表
+4. **更多策略示例** - 均线、RSI、布林带等技术指标策略
 
 ## 📄 许可证
 

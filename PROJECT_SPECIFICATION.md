@@ -40,10 +40,10 @@ QuantBacktest/
 │   ├── enums.py                  # 枚举定义（新增）
 │   ├── events.py                 # 事件系统定义（已重构）
 │   └── __init__.py
-├── Engine/                       # 回测引擎模块（待实现）
+├── Engine/                       # 回测引擎模块（已完成）
 ├── Execution/                    # 撮合执行模块（待实现）
-├── Portfolio/                    # 投资组合模块（待实现）
-├── Strategies/                   # 策略模块（待实现）
+├── Portfolio/                    # 投资组合模块（已完成）
+├── Strategies/                   # 策略模块（已完成）
 ├── Analysis/                     # 分析模块（待实现）
 ├── Test/                         # 测试模块
 │   ├── test_csv_loader.py        # CSV加载器测试
@@ -80,6 +80,126 @@ class Settings:
         - __init__(config_path: str = None)
         - get_env(key: str, default: str = None) -> str
         - get_config(key: str, default: Any = None) -> Any
+```
+
+### 2. 回测引擎模块 (Engine/)
+
+#### Engine/engine.py
+```python
+class BacktestEngine:
+    """回测引擎核心"""
+    
+    职责：
+    - 维护事件队列和事件循环
+    - 协调数据处理器、策略、投资组合和执行器之间的交互
+    - 严格依赖 DataHandler.update_bars() 生成器
+    - 依赖注入: 接收策略、投资组合和执行器实例
+    
+    核心方法:
+        - __init__(data_handler, strategy, portfolio, execution)  # 初始化依赖
+        - run()  # 主入口，启动回测
+        - _process_queue()  # 处理事件队列
+        - _handle_event(event)  # 事件分发处理器
+        - get_status()  # 获取引擎状态
+    
+    事件处理:
+        - MarketEvent → 策略处理 + 投资组合更新
+        - SignalEvent → 投资组合风控 + 订单生成
+        - OrderEvent → 执行器撮合 + 成交生成
+        - FillEvent → 投资组合更新
+```
+
+### 3. 策略抽象层 (Strategies/)
+
+#### Strategies/base.py
+```python
+class BaseStrategy(ABC):
+    """策略抽象基类"""
+    
+    职责：
+    - 标准化输入：所有策略都以相同方式接收行情数据
+    - 标准化输出：所有策略都通过统一接口发出信号
+    - 数据访问权限：通过 DataHandler 访问历史数据，严禁访问未来数据
+    
+    核心方法：
+        - __init__(data_handler, event_queue)  # 初始化依赖
+        - on_market_data(event) [抽象]  # 处理行情数据
+        - send_signal(symbol, direction, strength)  # 发送信号
+        - get_latest_bars(symbol, n)  # 获取历史数据
+        - get_latest_bar(symbol)  # 获取最新K线
+        - calculate_sma(symbol, period)  # 计算SMA
+        - calculate_ema(symbol, period)  # 计算EMA
+```
+
+#### Strategies/simple_strategy.py
+```python
+class SimpleMomentumStrategy(BaseStrategy):
+    """简单动量策略示例"""
+    
+    策略逻辑：
+    - 涨幅超过0.3%时买入
+    - 跌幅超过0.3%时卖出（如果有持仓）
+    
+    统计方法：
+        - buy_signals: 买入信号数量
+        - sell_signals: 卖出信号数量
+```
+
+### 4. 投资组合模块 (Portfolio/)
+
+#### Portfolio/base.py
+```python
+class BasePortfolio(ABC):
+    """投资组合抽象基类"""
+    
+    职责：
+    - 资金管理 (Capital Management)
+    - 信号转化 (Signal -> Order)
+    - 成交处理 (Fill Processing)
+    - 盯市 (Mark-to-Market)
+    
+    抽象方法：
+        - __init__(data_handler, initial_capital)  # 初始化
+        - update_on_market(event) [抽象]  # 更新持仓市值
+        - update_on_fill(event) [抽象]  # 处理成交
+        - process_signal(event) [抽象]  # 处理信号
+```
+
+#### Portfolio/portfolio.py
+```python
+class BacktestPortfolio(BasePortfolio):
+    """现货回测投资组合实现"""
+    
+    核心功能：
+    - 资金管理：维护现金和持仓
+    - 信号转化：将策略建议转化为具体订单
+    - 成交处理：实际扣款、记账
+    - 盯市：更新总资产
+    
+    关键逻辑：
+        - 买入：全仓买入，A股规则（100股倍数）
+        - 卖出：清仓卖出
+        - 风控：资金不足时拒绝交易
+        - 手续费：0.03%费率
+```
+
+### 5. 数据处理器模块 (DataManager/handlers/)
+
+#### DataManager/handlers/handler.py
+```python
+class BacktestDataHandler(BaseDataHandler):
+    """回测数据处理器"""
+    
+    核心功能：
+    - 时间对齐：多股票统一时间轴处理
+    - 防未来函数：策略只能访问当前视图数据
+    - 事件生成：通过生成器模式高效推送事件
+    
+    关键方法：
+        - update_bars() - 生成市场事件流
+        - get_latest_bar() - 获取最新K线
+        - get_latest_bars() - 获取历史K线
+        - get_current_time() - 获取当前回测时间
 ```
 
 ### 2. 数据管理模块 (DataManager/)
@@ -605,10 +725,10 @@ DataManager.selectors → Infrastructure.events
 - [x] 数据驱动层重构
 - [x] 新事件系统架构
 - [x] 综合集成测试
-- [ ] 回测引擎核心
-- [ ] 投资组合管理
+- [x] 回测引擎核心
+- [x] 策略框架
+- [x] 投资组合管理
 - [ ] 撮合执行系统
-- [ ] 策略框架
 - [ ] 性能分析工具
 - [ ] 图表生成模块
 
@@ -644,6 +764,9 @@ DataManager.selectors → Infrastructure.events
 4. **事件系统** - EventType枚举和MarketEvent、SignalEvent、OrderEvent、FillEvent
 5. **数据处理器** - BacktestDataHandler，时间对齐和防未来函数
 6. **配置管理** - YAML配置文件和环境变量支持
+7. **回测引擎** - BacktestEngine，事件驱动架构核心
+8. **策略框架** - BaseStrategy抽象基类和SimpleMomentumStrategy示例
+9. **投资组合管理** - BacktestPortfolio，A股规则的资金和持仓管理
 
 ### 架构特点
 - **事件驱动** - 通过事件实现模块解耦
@@ -653,10 +776,10 @@ DataManager.selectors → Infrastructure.events
 - **工业级代码** - 完整的异常处理和日志记录
 
 ### 下一步开发重点
-1. **回测引擎** - 事件循环和状态管理
-2. **策略框架** - 策略基类和信号处理
-3. **投资组合** - 仓位管理和风控
-4. **撮合引擎** - 订单处理和成交模拟
+1. **撮合执行系统** - 订单处理和成交模拟
+2. **性能分析工具** - 回测结果统计和可视化
+3. **图表生成模块** - 资金曲线和交易信号图表
+4. **更多策略示例** - 均线、RSI、布林带等技术指标策略
 
 ## 注意事项
 
