@@ -9,19 +9,36 @@ QuantBacktest是一个完整的量化交易回测系统，采用事件驱动架�
 ```
 QuantBacktest/
 ├── .env                         # 环境变量配置文件
+├── .gitignore                   # Git忽略文件配置
+├── PROJECT_SPECIFICATION.md     # 项目说明书
+├── README.md                    # 项目说明文档
+├── requirements.txt             # 项目依赖文件
 ├── config/                       # 配置管理模块
 │   ├── config.yaml               # 业务配置文件
 │   ├── settings.py               # 配置读取类
 │   └── __init__.py
 ├── DataManager/                  # 数据管理模块
+│   ├── api.py                    # 数据管理API接口
+│   ├── __init__.py
+│   ├── feeds/                    # 数据流处理
+│   │   ├── base_feed.py          # 基础数据流类
+│   │   ├── lazy_feed.py          # 懒加载数据流
+│   │   ├── mem_feed.py           # 内存数据流
+│   │   └── __init__.py
 │   ├── handlers/                 # 数据驱动层
 │   │   ├── handler.py            # 数据处理器实现（已重构）
+│   │   └── __init__.py
+│   ├── processors/               # 数据处理器
+│   │   ├── adjuster.py           # 数据调整器
+│   │   ├── cleaner.py            # 数据清洗器
+│   │   ├── merger.py             # 数据合并器
+│   │   ├── resampler.py          # 数据重采样器
 │   │   └── __init__.py
 │   ├── schema/                   # 数据结构定义
 │   │   ├── base.py               # 基础数据类
 │   │   ├── bar.py                # K线数据类
 │   │   ├── constant.py           # 常量定义
-│   │   ├── fundamental.py       # 财务数据类
+│   │   ├── fundamental.py        # 财务数据类
 │   │   ├── tick.py               # Tick数据类
 │   │   └── __init__.py
 │   ├── selectors/                # 选股器模块
@@ -34,22 +51,52 @@ QuantBacktest/
 │   │   ├── binance.py            # 币安数据源
 │   │   ├── local_csv.py          # 本地CSV数据源
 │   │   ├── tushare.py            # Tushare数据源
-│   │   └── yfinance.py           # Yahoo Finance数据源
+│   │   ├── yfinance.py           # Yahoo Finance数据源
+│   │   └── __init__.py
+│   └── storage/                  # 数据存储模块
+│       ├── base_store.py         # 存储基类
+│       ├── csv_store.py          # CSV存储
+│       ├── hdf5_store.py         # HDF5存储
+│       ├── influx_store.py       # InfluxDB存储
+│       ├── mysql_store.py        # MySQL存储
+│       └── __init__.py
+├── Engine/                       # 回测引擎模块（已完成）
+│   ├── engine.py                 # 回测引擎核心
+│   └── __init__.py
+├── Execution/                    # 撮合执行模块（已完成）
+│   ├── base.py                   # 执行器基类
+│   ├── simulator.py              # 模拟执行器
 │   └── __init__.py
 ├── Infrastructure/               # 基础设施模块
 │   ├── enums.py                  # 枚举定义（新增）
 │   ├── events.py                 # 事件系统定义（已重构）
 │   └── __init__.py
-├── Engine/                       # 回测引擎模块（已完成）
-├── Execution/                    # 撮合执行模块（待实现）
 ├── Portfolio/                    # 投资组合模块（已完成）
+│   ├── base.py                   # 投资组合基类
+│   ├── portfolio.py              # 投资组合实现
+│   └── __init__.py
 ├── Strategies/                   # 策略模块（已完成）
-├── Analysis/                     # 分析模块（待实现）
+│   ├── base.py                   # 策略基类
+│   ├── simple_strategy.py        # 简单策略示例
+│   └── __init__.py
+├── Analysis/                     # 分析模块（已完成）
+│   ├── performance.py            # 绩效分析器
+│   ├── plotting.py               # 图表绘制器
+│   └── __init__.py
 ├── Test/                         # 测试模块
-│   ├── test_csv_loader.py        # CSV加载器测试
-│   ├── test_wencai_csv_integration.py  # 集成测试
-│   ├── test_new_event_system.py  # 新事件系统测试（新增）
-│   └── test_comprehensive_integration.py  # 综合集成测试（新增）
+│   ├── debug_data.py             # 数据调试脚本
+│   ├── debug_plotting.py         # 图表调试脚本
+│   ├── debug_strategy.py         # 策略调试脚本
+│   ├── debug_strategy_signals.py # 策略信号调试脚本
+│   ├── test_complete_analysis.py # 完整分析测试
+│   ├── test_comprehensive_integration.py  # 综合集成测试
+│   ├── test_engine.py            # 引擎测试
+│   ├── test_execution_module.py  # 执行模块测试
+│   ├── test_new_event_system.py  # 新事件系统测试
+│   ├── test_portfolio.py         # 投资组合测试
+│   ├── test_strategy_base.py     # 策略基类测试
+│   └── test_wencai_csv_integration.py  # 问财CSV集成测试
+├── output/                       # 输出目录（图表、报告）
 └── txt/                          # 文档文件夹
 ```
 
@@ -673,6 +720,192 @@ class BacktestDataHandler(BaseDataHandler):
         - get_latest_bars(symbol: str, n: int = 1) -> List[BarData]
             # 读取 self._latest_data[symbol] 的最后 n 个元素，返回列表切片
 ```
+
+### 5. 撮合执行模块 (Execution/)
+
+#### Execution/base.py
+```python
+class BaseExecution(ABC):
+    """执行器抽象基类"""
+    
+    职责：
+    - 接收订单事件 (OrderEvent)
+    - 模拟交易所撮合过程
+    - 返回成交事件 (FillEvent)
+    - 实现交易成本（手续费、滑点）计算
+    - 处理订单状态管理
+    
+    抽象方法：
+        - execute_order(order_event: OrderEvent) -> Optional[FillEvent]  # 执行订单
+        - validate_order(order_event: OrderEvent) -> bool                # 订单验证
+        - get_execution_stats() -> Dict[str, Any]                       # 获取执行统计
+```
+
+#### Execution/simulator.py
+```python
+class SimulatedExecution(BaseExecution):
+    """模拟交易执行器"""
+    
+    职责：
+    - 模拟真实的交易执行环境
+    - 实现手续费、滑点等交易成本
+    - 处理市价单和限价单
+    - 维护订单状态和执行统计
+    
+    属性：
+        - data_handler: BaseDataHandler    # 数据处理器引用，用于获取价格信息
+        - commission_rate: float           # 手续费率（0.0003 表示 0.03%）
+        - slippage_rate: float            # 滑点率（0.001 表示 0.1%）
+        - min_commission: float           # 最低手续费（5元）
+        - logger: Logger                  # 日志记录器
+        - _execution_stats: Dict[str, Any]  # 执行统计信息
+    
+    核心方法：
+        - __init__(data_handler, commission_rate=0.0003, slippage_rate=0.001, min_commission=5.0)
+            # 初始化执行器参数
+        
+        - execute_order(order_event: OrderEvent) -> Optional[FillEvent]
+            # 核心执行逻辑：
+            # 1. 验证订单有效性
+            # 2. 获取当前价格（市价单使用收盘价，限价单需要价格匹配）
+            # 3. 计算成交价格（加入滑点）
+            # 4. 计算手续费
+            # 5. 生成FillEvent并返回
+        
+        - validate_order(order_event: OrderEvent) -> bool
+            # 验证订单参数合法性：
+            # - 股票代码是否存在
+            # - 交易方向是否有效
+            # - 交易数量是否为正
+            # - 限价单价格是否合理
+        
+        - _calculate_commission(trade_value: float) -> float
+            # 计算手续费，使用 min_commission 和 commission_rate 中的较大值
+        
+        - _apply_slippage(price: float, direction: Direction) -> float
+            # 根据交易方向应用滑点：
+            # - 买单：价格上涨 (1 + slippage_rate)
+            # - 卖单：价格下跌 (1 - slippage_rate)
+        
+        - get_execution_stats() -> Dict[str, Any]
+            # 返回执行统计信息：
+            # - orders_received: 接收订单数
+            # - orders_executed: 执行订单数
+            # - orders_rejected: 拒绝订单数
+            # - execution_rate: 执行率
+            # - total_commission: 总手续费
+            # - avg_commission: 平均手续费
+            # - avg_slippage_cost: 平均滑点成本
+```
+
+### 6. 分析模块 (Analysis/)
+
+#### Analysis/performance.py
+```python
+class PerformanceAnalyzer:
+    """绩效分析器"""
+    
+    职责：
+    - 将Portfolio记录的流水账变成专业的报表和指标
+    - 计算核心绩效指标：收益率、夏普比率、最大回撤等
+    - 生成分析报告和统计摘要
+    
+    属性：
+        - df: pd.DataFrame              # 资金曲线DataFrame，datetime为索引
+        - start_date: datetime          # 回测开始日期
+        - end_date: datetime            # 回测结束日期
+        - trading_days: int             # 交易天数
+        - start_equity: float           # 初始资金
+        - end_equity: float             # 最终资金
+    
+    构造方法：
+        - __init__(equity_curve: List[Dict[str, Any]])
+            # equity_curve: 来自Portfolio的资金曲线数据
+            # 每个字典包含: datetime, total_equity, cash, positions_value
+    
+    核心方法：
+        - _prepare_dataframe(equity_curve: List[Dict[str, Any]]) -> pd.DataFrame
+            # 准备DataFrame数据：转换格式、设置索引、按时间排序
+        
+        - calculate_total_return() -> float
+            # 计算累计收益率：(end/start) - 1
+        
+        - calculate_annualized_return() -> float
+            # 计算年化收益率：使用复利公式 (end/start)^(252/trading_days) - 1
+        
+        - calculate_max_drawdown() -> float
+            # 计算历史最大回撤：基于资金曲线计算最大跌幅
+        
+        - calculate_sharpe_ratio(risk_free_rate: float = 0.02) -> float
+            # 计算夏普比率：(超额收益率均值 / 超额收益率标准差) * sqrt(252)
+        
+        - calculate_volatility() -> float
+            # 计算年化波动率：日收益率标准差 * sqrt(252)
+        
+        - calculate_calmar_ratio() -> float
+            # 计算卡尔玛比率：年化收益率 / abs(最大回撤)
+        
+        - calculate_win_rate() -> float
+            # 计算胜率：正收益交易日占比
+        
+        - calculate_profit_loss_ratio() -> float
+            # 计算盈亏比：平均盈利 / 平均亏损
+        
+        - get_drawdown_series() -> pd.Series
+            # 获取回撤时间序列
+        
+        - get_summary() -> Dict[str, Any]
+            # 获取完整绩效分析摘要：包含所有关键指标
+        
+        - print_summary()
+            # 打印格式化的绩效摘要
+```
+
+#### Analysis/plotting.py
+```python
+class BacktestPlotter:
+    """回测图表绘制器"""
+    
+    职责：
+    - 绘制专业的量化回测分析图表
+    - 生成资金曲线图、回撤图、收益分布图等
+    - 支持多种可视化图表和完整报告生成
+    
+    属性：
+        - analyzer: PerformanceAnalyzer  # 绩效分析器实例
+        - figsize: tuple                # 图表尺寸，默认 (12, 10)
+        - logger: Logger                # 日志记录器
+    
+    构造方法：
+        - __init__(analyzer, figsize: tuple = (12, 10))
+    
+    核心方法：
+        - show_analysis_plot(save_path: Optional[str] = None)
+            # 显示完整的分析图表，包含：
+            # - 上图：资金曲线图（总资产、现金、持仓市值）
+            # - 下图：水下回撤图（回撤曲线及面积）
+        
+        - _plot_equity_curve(ax)
+            # 绘制资金曲线图：总资产、现金、持仓市值三条线
+        
+        - _plot_drawdown(ax)
+            # 绘制回撤图：回撤曲线及面积，标记最大回撤点
+        
+        - plot_returns_distribution(save_path: Optional[str] = None)
+            # 绘制收益分布图：日收益率直方图和累积收益图
+        
+        - plot_monthly_returns(save_path: Optional[str] = None)
+            # 绘制月度收益热力图：年-月收益矩阵
+        
+        - plot_rolling_metrics(window: int = 30, save_path: Optional[str] = None)
+            # 绘制滚动指标图：滚动夏普比率和波动率
+        
+        - save_plot(filename: str)
+            # 保存图表到文件
+        
+        - create_full_report(save_prefix: str = "backtest_report")
+            # 创建完整的分析报告：生成所有类型的图表
+```
 ```
 
 ## 依赖关系
@@ -681,7 +914,8 @@ class BacktestDataHandler(BaseDataHandler):
 Strategies → Infrastructure.events
 Portfolio → Infrastructure.events
 Execution → Infrastructure.events
-Engine → DataManager.handlers + Infrastructure.events
+Analysis → Infrastructure.events
+Engine → DataManager.handlers + Infrastructure.events + Strategies + Portfolio + Execution
 DataManager.handlers → DataManager.sources + Infrastructure.events
 DataManager.sources → DataManager.schema
 DataManager.selectors → Infrastructure.events
@@ -728,9 +962,9 @@ DataManager.selectors → Infrastructure.events
 - [x] 回测引擎核心
 - [x] 策略框架
 - [x] 投资组合管理
-- [ ] 撮合执行系统
-- [ ] 性能分析工具
-- [ ] 图表生成模块
+- [x] 撮合执行系统
+- [x] 性能分析工具
+- [x] 图表生成模块
 
 ## 测试验证
 
@@ -748,12 +982,17 @@ DataManager.selectors → Infrastructure.events
 - ✅ 防未来函数机制
 - ✅ 时间对齐和多股票处理
 - ✅ 完整流程模拟（选股→数据加载→事件生成→策略信号）
+- ✅ 执行器订单处理和成交模拟
+- ✅ 绩效分析和图表生成
 
 ### 测试结果
 - 问财选股：成功获取42只银行股
 - 数据加载：单股7条数据，多股时间对齐正常
 - 事件系统：20个MarketEvent生成，6只股票分布均匀
 - 策略模拟：检测到2个上涨信号（涨幅超过2%）
+- 订单执行：成功处理1个交易订单，执行率100%
+- 绩效统计：收益率-1.36%，夏普比率-3.897，最大回撤-1.83%
+- 图表生成：成功生成资金曲线图和收益分布图
 
 ## 当前系统状态
 
@@ -767,6 +1006,8 @@ DataManager.selectors → Infrastructure.events
 7. **回测引擎** - BacktestEngine，事件驱动架构核心
 8. **策略框架** - BaseStrategy抽象基类和SimpleMomentumStrategy示例
 9. **投资组合管理** - BacktestPortfolio，A股规则的资金和持仓管理
+10. **执行系统** - SimulatedExecution，订单处理、手续费、滑点模拟
+11. **分析系统** - PerformanceAnalyzer和BacktestPlotter，绩效分析和图表生成
 
 ### 架构特点
 - **事件驱动** - 通过事件实现模块解耦
@@ -774,12 +1015,16 @@ DataManager.selectors → Infrastructure.events
 - **时间对齐** - 多股票统一时间轴处理
 - **生成器模式** - 高效的事件流生成
 - **工业级代码** - 完整的异常处理和日志记录
+- **完整回测** - 从选股到绩效分析的完整链条
 
-### 下一步开发重点
-1. **撮合执行系统** - 订单处理和成交模拟
-2. **性能分析工具** - 回测结果统计和可视化
-3. **图表生成模块** - 资金曲线和交易信号图表
-4. **更多策略示例** - 均线、RSI、布林带等技术指标策略
+### 已实现核心功能
+1. **选股** - 通过问财实现自然语言选股
+2. **数据加载** - 本地CSV数据加载和处理
+3. **事件驱动** - 完整的事件流转机制
+4. **策略执行** - 信号生成和订单转化
+5. **交易模拟** - 手续费、滑点、A股规则
+6. **绩效分析** - 收益率、夏普比率、最大回撤等指标
+7. **图表生成** - 专业级回测报告图表
 
 ## 注意事项
 

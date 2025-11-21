@@ -44,6 +44,9 @@ class BacktestPortfolio(BasePortfolio):
         self.total_trades = 0
         self.total_commission = 0.0
         
+        # 资金曲线记录
+        self.equity_curve = []  # 记录每日资金变化
+        
         self.logger.info(f"BacktestPortfolio 初始化完成")
         self.logger.info(f"初始资金: {self.current_cash:,.2f}")
     
@@ -73,6 +76,9 @@ class BacktestPortfolio(BasePortfolio):
             
             # 更新总资产
             self.total_equity = self.current_cash + positions_value
+            
+            # 记录资金曲线
+            self._record_equity_curve(event.bar.datetime, positions_value)
             
             # 每100次更新显示一次
             if self.market_updates % 100 == 0:
@@ -366,3 +372,29 @@ class BacktestPortfolio(BasePortfolio):
         }
         
         return portfolio_info
+    
+    def _record_equity_curve(self, current_time: datetime, positions_value: float) -> None:
+        """
+        记录资金曲线数据
+        
+        Args:
+            current_time: 当前时间
+            positions_value: 持仓市值
+        """
+        equity_point = {
+            'datetime': current_time,
+            'total_equity': self.total_equity,
+            'cash': self.current_cash,
+            'positions_value': positions_value
+        }
+        
+        self.equity_curve.append(equity_point)
+    
+    def get_equity_curve(self) -> list:
+        """
+        获取资金曲线数据
+        
+        Returns:
+            资金曲线数据列表
+        """
+        return self.equity_curve.copy()

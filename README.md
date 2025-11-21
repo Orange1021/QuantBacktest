@@ -15,26 +15,186 @@
 
 ```
 QuantBacktest/
-├── DataManager/          # 数据管理层
-│   ├── handlers/         # 数据驱动层（已重构）
-│   ├── sources/          # 数据源适配器
-│   ├── schema/           # 数据结构定义
-│   ├── selectors/        # 选股器
+
+├── .env                         # 环境变量配置文件
+
+├── .gitignore                   # Git忽略文件配置
+
+├── PROJECT_SPECIFICATION.md     # 项目说明书
+
+├── README.md                    # 项目说明文档
+
+├── requirements.txt             # 项目依赖文件
+
+├── config/                       # 配置管理模块
+
+│   ├── config.yaml               # 业务配置文件
+
+│   ├── settings.py               # 配置读取类
+
 │   └── __init__.py
-├── Infrastructure/       # 基础设施
-│   ├── enums.py          # 枚举定义（新增）
-│   ├── events.py         # 事件系统（已重构）
+
+├── DataManager/                  # 数据管理模块
+
+│   ├── api.py                    # 数据管理API接口
+
+│   ├── __init__.py
+
+│   ├── feeds/                    # 数据流处理
+
+│   │   ├── base_feed.py          # 基础数据流类
+
+│   │   ├── lazy_feed.py          # 懒加载数据流
+
+│   │   ├── mem_feed.py           # 内存数据流
+
+│   │   └── __init__.py
+
+│   ├── handlers/                 # 数据驱动层
+
+│   │   ├── handler.py            # 数据处理器实现（已重构）
+
+│   │   └── __init__.py
+
+│   ├── processors/               # 数据处理器
+
+│   │   ├── adjuster.py           # 数据调整器
+
+│   │   ├── cleaner.py            # 数据清洗器
+
+│   │   ├── merger.py             # 数据合并器
+
+│   │   ├── resampler.py          # 数据重采样器
+
+│   │   └── __init__.py
+
+│   ├── schema/                   # 数据结构定义
+
+│   │   ├── base.py               # 基础数据类
+
+│   │   ├── bar.py                # K线数据类
+
+│   │   ├── constant.py           # 常量定义
+
+│   │   ├── fundamental.py        # 财务数据类
+
+│   │   ├── tick.py               # Tick数据类
+
+│   │   └── __init__.py
+
+│   ├── selectors/                # 选股器模块
+
+│   │   ├── base.py               # 选股器基类
+
+│   │   ├── tushare_selector.py   # Tushare选股器
+
+│   │   ├── wencai_selector.py    # 问财选股器
+
+│   │   └── __init__.py
+
+│   ├── sources/                  # 数据源适配器
+
+│   │   ├── base_source.py        # 数据源基类
+
+│   │   ├── binance.py            # 币安数据源
+
+│   │   ├── local_csv.py          # 本地CSV数据源
+
+│   │   ├── tushare.py            # Tushare数据源
+
+│   │   ├── yfinance.py           # Yahoo Finance数据源
+
+│   │   └── __init__.py
+
+│   └── storage/                  # 数据存储模块
+
+│       ├── base_store.py         # 存储基类
+
+│       ├── csv_store.py          # CSV存储
+
+│       ├── hdf5_store.py         # HDF5存储
+
+│       ├── influx_store.py       # InfluxDB存储
+
+│       ├── mysql_store.py        # MySQL存储
+
+│       └── __init__.py
+
+├── Engine/                       # 回测引擎模块（已完成）
+
+│   ├── engine.py                 # 回测引擎核心
+
 │   └── __init__.py
-├── Engine/              # 回测引擎（已完成）
-├── Execution/           # 撮合执行（待实现）
-├── Portfolio/           # 投资组合管理（已完成）
-├── Strategies/          # 策略实现（已完成）
-├── Analysis/            # 分析工具（待实现）
-├── config/              # 配置管理
-├── Test/                # 测试用例
-│   ├── test_comprehensive_integration.py  # 综合集成测试（新增）
-│   └── ...
-└── txt/                 # 文档文件夹
+
+├── Execution/                    # 撮合执行模块（已完成）
+
+│   ├── base.py                   # 执行器基类
+
+│   ├── simulator.py              # 模拟执行器
+
+│   └── __init__.py
+
+├── Infrastructure/               # 基础设施模块
+
+│   ├── enums.py                  # 枚举定义（新增）
+
+│   ├── events.py                 # 事件系统定义（已重构）
+
+│   └── __init__.py
+
+├── Portfolio/                    # 投资组合模块（已完成）
+
+│   ├── base.py                   # 投资组合基类
+
+│   ├── portfolio.py              # 投资组合实现
+
+│   └── __init__.py
+
+├── Strategies/                   # 策略模块（已完成）
+
+│   ├── base.py                   # 策略基类
+
+│   ├── simple_strategy.py        # 简单策略示例
+
+│   └── __init__.py
+
+├── Analysis/                     # 分析模块（已完成）
+
+│   ├── performance.py            # 绩效分析器
+
+│   ├── plotting.py               # 图表绘制器
+
+│   └── __init__.py
+
+├── Test/                         # 测试模块
+
+│   ├── debug_data.py             # 数据调试脚本
+
+│   ├── debug_plotting.py         # 图表调试脚本
+
+│   ├── debug_strategy.py         # 策略调试脚本
+
+│   ├── debug_strategy_signals.py # 策略信号调试脚本
+
+│   ├── test_complete_analysis.py # 完整分析测试
+
+│   ├── test_comprehensive_integration.py  # 综合集成测试
+
+│   ├── test_engine.py            # 引擎测试
+
+│   ├── test_execution_module.py  # 执行模块测试
+
+│   ├── test_new_event_system.py  # 新事件系统测试
+
+│   ├── test_portfolio.py         # 投资组合测试
+
+│   ├── test_strategy_base.py     # 策略基类测试
+
+│   └── test_wencai_csv_integration.py  # 问财CSV集成测试
+
+├── output/                       # 输出目录（图表、报告）
+
+└── txt/                          # 文档文件夹
 ```
 
 ## 🛠️ 安装
@@ -493,44 +653,72 @@ for event in handler.update_bars():
 
 ## 📋 开发计划
 
+
+
 - [x] 数据结构和事件系统
+
 - [x] 本地CSV数据加载
+
 - [x] 问财选股器
+
 - [x] 数据驱动层重构
+
 - [x] 新事件系统架构
+
 - [x] 综合集成测试
+
 - [x] 回测引擎核心
+
 - [x] 策略框架
+
 - [x] 投资组合管理
-- [ ] 撮合执行系统
-- [ ] 性能分析工具
-- [ ] 图表生成模块
+
+- [x] 撮合执行系统
+
+- [x] 性能分析工具
+
+- [x] 图表生成模块
 
 ## 🎯 当前系统状态
 
 ### 已完成模块
+
 - **数据结构层** - 完整的BarData、TickData、FundamentalData模型
+
 - **数据源层** - LocalCSVLoader，支持中文列名和单位转换
+
 - **选股器层** - WencaiSelector，自然语言选股
+
 - **事件系统** - EventType枚举和MarketEvent、SignalEvent、OrderEvent、FillEvent
+
 - **数据处理器** - BacktestDataHandler，时间对齐和防未来函数
+
 - **配置管理** - YAML配置文件和环境变量支持
+
 - **回测引擎** - BacktestEngine，事件驱动架构核心
+
 - **策略框架** - BaseStrategy抽象基类和SimpleMomentumStrategy示例
+
 - **投资组合管理** - BacktestPortfolio，A股规则的资金和持仓管理
 
+- **执行系统** - SimulatedExecution，订单处理、手续费、滑点模拟
+
+- **分析系统** - PerformanceAnalyzer和BacktestPlotter，绩效分析和图表生成
+
 ### 架构特点
+
 - **事件驱动** - 通过事件实现模块解耦
+
 - **防未来函数** - 策略只能访问当前视图数据
+
 - **时间对齐** - 多股票统一时间轴处理
+
 - **生成器模式** - 高效的事件流生成
+
 - **工业级代码** - 完整的异常处理和日志记录
 
-### 测试验证
-- 问财选股：成功获取42只银行股
-- 数据加载：单股7条数据，多股时间对齐正常
-- 事件系统：20个MarketEvent生成，6只股票分布均匀
-- 策略模拟：检测到2个上涨信号（涨幅超过2%）
+- **完整回测** - 从选股到绩效分析的完整链条
+
 
 ## 🏗️ 系统架构
 
@@ -572,10 +760,15 @@ Portfolio (持仓更新) ✅
 
 ### 下一步开发重点
 
-1. **撮合执行系统** - 订单处理和成交模拟
-2. **性能分析工具** - 回测结果统计和可视化
-3. **图表生成模块** - 资金曲线和交易信号图表
-4. **更多策略示例** - 均线、RSI、布林带等技术指标策略
+
+
+1. **更多策略示例** - 均线、RSI、布林带等技术指标策略
+
+2. **扩展数据源** - Tushare、Yahoo Finance、Binance等数据源
+
+3. **优化数据结构** - 支持更多数据类型和字段
+
+4. **多周期回测** - 支持不同时间周期的回测
 
 ## 📄 许可证
 

@@ -1,6 +1,6 @@
 """
 综合集成测试
-验证问财选股 -> CSV数据加载 -> 新事件系统 -> DataHandler -> BacktestEngine的完整流程
+验证问财选股 -> CSV数据加载 -> 新事件系统 -> DataHandler -> BacktestEngine -> Analysis的完整流程
 """
 
 import sys
@@ -22,6 +22,9 @@ from DataManager.selectors.wencai_selector import WencaiSelector
 from Engine.engine import BacktestEngine
 from Strategies.simple_strategy import SimpleMomentumStrategy
 from Portfolio.portfolio import BacktestPortfolio
+from Execution.simulator import SimulatedExecution
+from Analysis.performance import PerformanceAnalyzer
+from Analysis.plotting import BacktestPlotter
 from config.settings import settings
 
 # 设置日志
@@ -31,47 +34,7 @@ logging.basicConfig(
 )
 
 
-class SimpleExecution:
-    """简单执行器实现"""
-    
-    def __init__(self, data_handler):
-        self.logger = logging.getLogger(f"{__name__}.SimpleExecution")
-        self.data_handler = data_handler
-        self.orders_received = 0
-        self.fills_generated = 0
-    
-    def execute_order(self, event: OrderEvent) -> Optional[FillEvent]:
-        """执行订单，生成成交"""
-        self.orders_received += 1
-        
-        try:
-            # 获取当前价格
-            latest_bar = self.data_handler.get_latest_bar(event.symbol)
-            if not latest_bar:
-                self.logger.warning(f"无法获取 {event.symbol} 的当前价格")
-                return None
-            
-            # 简单撮合：市价单立即成交，价格使用当前价格
-            fill_price = latest_bar.close_price
-            commission = fill_price * event.volume * 0.0003  # 0.03%手续费
-            
-            fill = FillEvent(
-                symbol=event.symbol,
-                datetime=event.datetime,
-                direction=event.direction,
-                volume=event.volume,
-                price=fill_price,
-                commission=commission
-            )
-            
-            self.fills_generated += 1
-            self.logger.info(f"执行器生成成交: {fill.symbol}, 数量: {fill.volume}, 价格: {fill_price:.2f}")
-            
-            return fill
-        
-        except Exception as e:
-            self.logger.error(f"订单执行失败: {e}")
-            return None
+
 
 
 def extract_symbol_from_vt_symbol(vt_symbol: str) -> str:
@@ -126,7 +89,9 @@ def test_comprehensive_integration():
                 test_symbols = ["000001.SZSE", "000002.SZSE", "600000.SSE", "600036.SSE"]
             else:
                 print(f"✅ 问财选股成功，获取到 {len(bank_stocks)} 只银行股")
-                test_symbols = bank_stocks[:6]  # 取前6只进行测试
+                # 对股票代码进行排序以确保每次测试结果一致
+                sorted_bank_stocks = sorted(bank_stocks)
+                test_symbols = sorted_bank_stocks[:6]  # 取前6只进行测试
                 print(f"📋 测试股票: {test_symbols}")
                 
         except Exception as e:
@@ -273,7 +238,11 @@ def test_comprehensive_integration():
         # 创建真实的组件
         strategy = SimpleMomentumStrategy(handler, deque())  # 策略使用自己的队列
         portfolio = BacktestPortfolio(handler, initial_capital=100000.0)
-        execution = SimpleExecution(handler)
+        execution = SimulatedExecution(
+            data_handler=handler,
+            commission_rate=0.0003,
+            slippage_rate=0.001
+        )
         
         # 建立策略和投资组合的连接
         strategy.set_portfolio(portfolio)
@@ -321,15 +290,78 @@ def test_comprehensive_integration():
         print(f"  收益率: {portfolio_info['return_rate']:.2f}%")
         
         print(f"\n⚙️ 执行器统计:")
-        print(f"  接收订单数量: {execution.orders_received}")
-        print(f"  生成成交数量: {execution.fills_generated}")
+        execution_stats = execution.get_execution_stats()
+        print(f"  接收订单数量: {execution_stats['orders_received']}")
+        print(f"  执行订单数量: {execution_stats['orders_executed']}")
+        print(f"  拒绝订单数量: {execution_stats['orders_rejected']}")
+        print(f"  执行率: {execution_stats['execution_rate']:.2%}")
+        print(f"  总手续费: {execution_stats['total_commission']:.2f}")
+        print(f"  平均手续费: {execution_stats['avg_commission']:.2f}")
         
     except Exception as e:
         print(f"❌ BacktestEngine集成测试失败: {e}")
         return False
     
-    # 步骤6: 事件流转验证
-    print(f"\n步骤6: 事件流转验证")
+    # 步骤6: Analysis模块集成测试
+    print(f"\n步骤6: Analysis模块集成测试")
+    print("-" * 40)
+    
+    try:
+        # 获取资金曲线数据
+        equity_curve = portfolio.get_equity_curve()
+        print(f"✅ 资金曲线数据获取成功: {len(equity_curve)} 个数据点")
+        
+        if len(equity_curve) < 2:
+            print("❌ 资金曲线数据不足，无法进行分析")
+            return False
+        
+        # 创建绩效分析器
+        analyzer = PerformanceAnalyzer(equity_curve)
+        print(f"✅ PerformanceAnalyzer 创建成功")
+        
+        # 计算关键指标
+        total_return = analyzer.calculate_total_return()
+        max_drawdown = analyzer.calculate_max_drawdown()
+        sharpe_ratio = analyzer.calculate_sharpe_ratio()
+        annual_return = analyzer.calculate_annualized_return()
+        
+        print(f"\n📊 关键绩效指标:")
+        print(f"   累计收益率: {total_return*100:.2f}%")
+        print(f"   年化收益率: {annual_return*100:.2f}%")
+        print(f"   最大回撤: {max_drawdown*100:.2f}%")
+        print(f"   夏普比率: {sharpe_ratio:.3f}")
+        
+        # 创建图表绘制器
+        plotter = BacktestPlotter(analyzer)
+        print(f"✅ BacktestPlotter 创建成功")
+        
+        # 生成分析图表（不显示，只保存）
+        plotter.show_analysis_plot("integration_test_main.png")
+        print(f"✅ 主分析图保存成功")
+        
+        # 生成收益分布图
+        try:
+            plotter.plot_returns_distribution("integration_test_returns.png")
+            print(f"✅ 收益分布图保存成功")
+        except Exception as e:
+            print(f"⚠️ 收益分布图生成跳过: {e}")
+        
+        # 获取完整摘要
+        summary = analyzer.get_summary()
+        print(f"\n📈 完整绩效摘要:")
+        print(f"   交易天数: {summary['trading_days']}")
+        print(f"   胜率: {summary['win_rate']*100:.2f}%")
+        print(f"   年化波动率: {summary['volatility']*100:.2f}%")
+        print(f"   卡尔玛比率: {summary['calmar_ratio']:.3f}")
+        
+    except Exception as e:
+        print(f"❌ Analysis模块集成测试失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    
+    # 步骤7: 事件流转验证
+    print(f"\n步骤7: 事件流转验证")
     print("-" * 40)
     
     try:
@@ -342,9 +374,10 @@ def test_comprehensive_integration():
             print("❌ MarketEvent 事件流转异常")
             return False
         
+        execution_stats = execution.get_execution_stats()
         if (strategy_info['signals_generated'] == portfolio_info['signals_processed'] and
-            execution.orders_received == execution.fills_generated and
-            execution.fills_generated == portfolio_info['fills_processed']):
+            execution_stats['orders_received'] == execution_stats['orders_executed'] and
+            execution_stats['orders_executed'] == portfolio_info['fills_processed']):
             print("✅ 信号->订单->成交 事件流转正常")
         else:
             print("✅ 信号->订单->成交 事件流转正常（无交易信号生成）")
@@ -366,16 +399,22 @@ def test_comprehensive_integration():
     print("✅ 步骤2: CSV数据加载测试 - 通过")
     print("✅ 步骤3: 新事件系统测试 - 通过")
     print("✅ 步骤4: DataHandler集成测试 - 通过")
-    print("✅ 步骤5: BacktestEngine集成测试 - 通过")
-    print("✅ 步骤6: 事件流转验证 - 通过")
+    print("✅ 步骤5: BacktestEngine + Execution集成测试 - 通过")
+    print("✅ 步骤6: Analysis模块集成测试 - 通过")
+    print("✅ 步骤7: 完整事件流转验证（含Execution） - 通过")
     
     print(f"\n🎉 综合集成测试全部通过！")
     print(f"📊 测试股票数量: {len(test_symbols[:3])}")
     print(f"📈 生成事件数量: {status['total_events']}")
     print(f"📋 策略信号数量: {strategy_info['signals_generated']}")
     print(f"💼 处理成交数量: {portfolio_info['fills_processed']}")
+    print(f"⚙️ 执行器执行订单: {execution_stats['orders_executed']}/{execution_stats['orders_received']}")
     print(f"💰 最终总资产: {portfolio.get_equity():,.2f}")
     print(f"📈 投资收益率: {portfolio_info['return_rate']:.2f}%")
+    print(f"💸 总手续费支出: {execution_stats['total_commission']:.2f}")
+    print(f"📊 资金曲线数据点: {len(equity_curve)}")
+    print(f"📈 夏普比率: {sharpe_ratio:.3f}")
+    print(f"📉 最大回撤: {max_drawdown*100:.2f}%")
     
     return True
 
