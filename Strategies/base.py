@@ -15,7 +15,21 @@ from DataManager.handlers.handler import BaseDataHandler
 from DataManager.schema.bar import BarData
 
 
-class BaseStrategy(ABC):
+class IStrategy(ABC):
+    """策略接口，强制实现关键方法"""
+    
+    @abstractmethod
+    def on_market_data(self, event: MarketEvent) -> None:
+        """处理行情数据的抽象方法"""
+        pass
+    
+    @abstractmethod
+    def set_event_queue(self, event_queue: deque) -> None:
+        """设置事件队列的抽象方法"""
+        pass
+
+
+class BaseStrategy(IStrategy, ABC):
     """
     策略抽象基类
     
@@ -23,21 +37,21 @@ class BaseStrategy(ABC):
     1. 标准化输入：所有策略都以相同方式接收行情数据 (MarketEvent)
     2. 标准化输出：所有策略都通过统一接口发出信号 (SignalEvent)
     3. 数据访问权限：策略通过 DataHandler 访问历史数据，严禁访问未来数据
+    4. 模板方法模式：确保状态更新和策略逻辑的正确执行顺序
     """
     
-    def __init__(self, data_handler: BaseDataHandler, event_queue: deque):
+    def __init__(self, data_handler: BaseDataHandler):
         """
         初始化策略
         
         Args:
             data_handler: 数据处理器，用于获取历史数据
-            event_queue: 事件队列，用于发送信号事件
         """
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # 核心依赖
         self.data_handler = data_handler
-        self.event_queue = event_queue
+        self.event_queue: Optional[deque] = None  # 延迟注入
         
         # 策略状态
         self.is_initialized = False
@@ -48,6 +62,16 @@ class BaseStrategy(ABC):
         self.market_data_processed = 0
         
         self.logger.info(f"{self.__class__.__name__} 策略初始化完成")
+    
+    def set_event_queue(self, event_queue: deque) -> None:
+        """
+        设置事件队列
+        
+        Args:
+            event_queue: 引擎提供的事件队列引用
+        """
+        self.event_queue = event_queue
+        self.logger.debug(f"{self.__class__.__name__} 事件队列已设置")
     
     @abstractmethod
     def on_market_data(self, event: MarketEvent) -> None:
@@ -72,13 +96,17 @@ class BaseStrategy(ABC):
         发送交易信号
         
         这是策略向系统发出交易指令的标准方式。
-        内部会创建 SignalEvent 并推入事件队列。
+        内部会创建 SignalEvent 并推入引擎的事件队列。
         
         Args:
             symbol: 股票代码，格式如 "000001.SZ"
             direction: 交易方向 (Direction.LONG/Direction.SHORT)
             strength: 信号强度，0.0-1.0，默认1.0表示最强信号
         """
+        if self.event_queue is None:
+            self.logger.error("事件队列未设置，无法发送信号")
+            return
+        
         try:
             # 获取当前回测时间
             current_time = self.data_handler.get_current_time()
@@ -94,7 +122,7 @@ class BaseStrategy(ABC):
                 strength=strength
             )
             
-            # 推入事件队列
+            # 直接推入引擎的事件队列
             self.event_queue.append(signal_event)
             self.signals_generated += 1
             
@@ -257,10 +285,13 @@ class BaseStrategy(ABC):
     
     def _process_market_data(self, event: MarketEvent) -> None:
         """
-        处理行情数据的内部方法
+        处理行情数据的模板方法
         
-        这是一个模板方法，在调用具体的 on_market_data 之前，
-        先更新策略状态，然后调用策略逻辑。
+        这是模板方法模式的实现，确保：
+        1. 先更新策略状态
+        2. 再调用具体的策略逻辑
+        
+        引擎应该调用此方法，而不是直接调用 on_market_data。
         
         Args:
             event: 行情事件

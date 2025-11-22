@@ -44,7 +44,7 @@ def test_new_event_system():
         # 创建一个测试BarData
         test_bar = BarData(
             symbol="000001",
-            exchange=Exchange.SZSE,
+            exchange=Exchange.SZ,
             datetime=datetime(2025, 1, 1),
             interval=Interval.DAILY,
             open_price=10.0,
@@ -80,7 +80,7 @@ def test_new_event_system():
         # 创建数据处理器
         handler = BacktestDataHandler(
             loader=loader,
-            symbol_list=["000001.SZSE", "000002.SZSE"],
+            symbol_list=["000001.SZ", "000002.SZ"],
             start_date=datetime(2025, 1, 1),
             end_date=datetime(2025, 1, 10)
         )
@@ -103,11 +103,11 @@ def test_new_event_system():
         print(f"   ✅ 成功生成 {event_count} 个MarketEvent")
         
         # 测试数据查询接口
-        latest_bar = handler.get_latest_bar("000001.SZSE")
+        latest_bar = handler.get_latest_bar("000001.SZ")
         if latest_bar:
             print(f"   ✅ 获取最新K线成功: {latest_bar.symbol} @ {latest_bar.datetime}")
         
-        latest_bars = handler.get_latest_bars("000001.SZSE", 3)
+        latest_bars = handler.get_latest_bars("000001.SZ", 3)
         if latest_bars:
             print(f"   ✅ 获取最近3根K线成功: 数量={len(latest_bars)}")
         

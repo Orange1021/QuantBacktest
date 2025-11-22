@@ -50,7 +50,7 @@ def debug_plotting():
         )
         
         # 创建回测组件
-        strategy = SimpleMomentumStrategy(handler, deque())
+        strategy = SimpleMomentumStrategy(handler)
         portfolio = BacktestPortfolio(handler, initial_capital=100000.0)
         execution = SimulatedExecution(data_handler=handler)
         

@@ -20,8 +20,8 @@ class SimpleMomentumStrategy(BaseStrategy):
     - 跌幅超过0.8%时卖出（如果有持仓）
     """
     
-    def __init__(self, data_handler, event_queue):
-        super().__init__(data_handler, event_queue)
+    def __init__(self, data_handler):
+        super().__init__(data_handler)
         self.buy_signals = 0
         self.sell_signals = 0
         self.portfolio = None  # 将在引擎中设置

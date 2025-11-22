@@ -93,9 +93,11 @@ class FillEvent:
     @property
     def net_value(self) -> float:
         """净成交金额（扣除手续费）"""
-        if self.direction in [Direction.BUY, Direction.LONG]:
+        if self.direction == Direction.LONG:
+            # 买入：成本 = 成交金额 + 手续费
             return self.trade_value + self.commission
         else:
+            # 卖出：收入 = 成交金额 - 手续费
             return self.trade_value - self.commission
     
     def __str__(self) -> str:

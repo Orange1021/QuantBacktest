@@ -8,10 +8,15 @@ from enum import Enum
 
 class Exchange(Enum):
     """交易所枚举"""
-    # A股市场
-    SSE = "SSE"        # 上海证券交易所
-    SZSE = "SZSE"      # 深圳证券交易所
-    BSE = "BSE"        # 北京证券交易所
+    # A股市场 - 标准化格式 (Backtrader/VeighNa 兼容)
+    SH = "SH"          # 上海证券交易所
+    SZ = "SZ"          # 深圳证券交易所
+    BJ = "BJ"          # 北京证券交易所
+    
+    # 兼容旧格式
+    SSE = "SSE"        # 上海证券交易所 (旧格式)
+    SZSE = "SZSE"      # 深圳证券交易所 (旧格式)
+    BSE = "BSE"        # 北京证券交易所 (旧格式)
     
     # 期货市场
     CFFEX = "CFFEX"    # 中金所

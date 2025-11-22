@@ -8,6 +8,7 @@ from typing import Optional
 import logging
 
 from Infrastructure.events import OrderEvent, FillEvent
+from Infrastructure.enums import Direction
 
 
 class BaseExecutor(ABC):
@@ -76,7 +77,7 @@ class BaseExecutor(ABC):
             float: 滑点后的价格
         """
         # 买入时价格上浮，卖出时价格下浮
-        if direction.value in ['LONG', 'BUY']:
+        if direction == Direction.LONG:
             return price * (1 + self.slippage_rate)
         else:
             return price * (1 - self.slippage_rate)

@@ -33,6 +33,11 @@ class BasePortfolio(ABC):
         self.data_handler = data_handler
         self.initial_capital = initial_capital
         
+        # 资金管理状态 - 所有子类都必须实现这些属性
+        self.current_cash: float = initial_capital  # 当前可用现金
+        self.positions: dict = {}  # 持仓字典 {symbol: volume}
+        self.total_equity: float = initial_capital  # 总资产 = 现金 + 持仓市值
+        
         # 统计信息
         self.market_updates = 0
         self.signals_processed = 0

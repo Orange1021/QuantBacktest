@@ -174,7 +174,7 @@ def test_execution_module():
         execution.reset_stats()
         
         # 创建完整的回测系统
-        strategy = SimpleMomentumStrategy(handler, deque())
+        strategy = SimpleMomentumStrategy(handler)
         portfolio = BacktestPortfolio(handler, initial_capital=100000.0)
         
         # 建立策略和投资组合的连接

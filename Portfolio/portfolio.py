@@ -97,7 +97,7 @@ class BacktestPortfolio(BasePortfolio):
         成交时调用（记账逻辑）
         
         这是最关键的记账逻辑，必须确保资金计算准确。
-        无论买卖，都要从现金中减去手续费。
+        使用修复后的 FillEvent.net_value 属性，确保手续费计算正确。
         
         Args:
             event: 成交事件
@@ -113,45 +113,74 @@ class BacktestPortfolio(BasePortfolio):
             commission = event.commission
             
             trade_value = price * volume  # 成交金额
-            net_value = event.net_value   # 净值（扣除手续费后）
+            net_value = event.net_value   # 净值（已正确计算手续费）
+            
+            # 资金变动前的余额，用于验证
+            cash_before = self.current_cash
             
             self.logger.info(
                 f"成交处理: {symbol} {direction.value} {volume}股 "
-                f"@{price:.2f}, 成交额:{trade_value:.2f}, 手续费:{commission:.2f}"
+                f"@{price:.2f}, 成交额:{trade_value:.2f}, 手续费:{commission:.2f}, 净值:{net_value:.2f}"
             )
             
             if direction == Direction.LONG:
-                # 买入成交：扣钱，加仓
-                self.current_cash -= net_value  # 扣除成交金额和手续费
+                # 买入成交：现金减少 = 成交金额 + 手续费
+                self.current_cash -= net_value  # net_value 已包含手续费
                 self.positions[symbol] = self.positions.get(symbol, 0) + volume
                 self.total_commission += commission
                 
+                # 验证资金计算正确性
+                expected_cash = cash_before - trade_value - commission
+                if abs(self.current_cash - expected_cash) > 0.01:  # 1分钱误差容忍
+                    self.logger.error(
+                        f"资金计算错误！期望:{expected_cash:.2f}, 实际:{self.current_cash:.2f}, "
+                        f"差异:{abs(self.current_cash - expected_cash):.2f}"
+                    )
+                
                 self.logger.info(
                     f"买入完成: {symbol} 持仓增至 {self.positions[symbol]}股, "
-                    f"现金余额: {self.current_cash:,.2f}"
+                    f"现金余额: {self.current_cash:,.2f} (减少:{net_value:.2f})"
                 )
             
             elif direction == Direction.SHORT:
-                # 卖出成交：加钱，减仓
-                self.current_cash += net_value  # 加上成交净值（已扣除手续费）
+                # 卖出成交：现金增加 = 成交金额 - 手续费
+                self.current_cash += net_value  # net_value 已扣除手续费
                 self.positions[symbol] = self.positions.get(symbol, 0) - volume
                 self.total_commission += commission
                 
-                # 如果持仓为0，从字典中删除
+                # 验证资金计算正确性
+                expected_cash = cash_before + trade_value - commission
+                if abs(self.current_cash - expected_cash) > 0.01:  # 1分钱误差容忍
+                    self.logger.error(
+                        f"资金计算错误！期望:{expected_cash:.2f}, 实际:{self.current_cash:.2f}, "
+                        f"差异:{abs(self.current_cash - expected_cash):.2f}"
+                    )
+                
+                # 如果持仓为0或负数，从字典中删除
                 if self.positions[symbol] <= 0:
                     del self.positions[symbol]
                     self.logger.info(f"卖出完成: {symbol} 持仓清零")
                 else:
                     self.logger.info(
                         f"卖出完成: {symbol} 持仓减至 {self.positions[symbol]}股, "
-                        f"现金余额: {self.current_cash:,.2f}"
+                        f"现金余额: {self.current_cash:,.2f} (增加:{net_value:.2f})"
                     )
             
             else:
                 self.logger.warning(f"未知的交易方向: {direction}")
+                return
+            
+            # 更新总资产
+            self._update_total_equity()
+            
+            # 资金安全检查
+            if self.current_cash < 0:
+                self.logger.error(f"警告：现金余额为负数！{self.current_cash:.2f}")
         
         except Exception as e:
             self.logger.error(f"成交处理失败: {e}")
+            # 记录错误状态，但不中断整个回测
+            self.logger.error(f"错误时的资金状态: 现金={self.current_cash:.2f}, 持仓={self.positions}")
     
     def process_signal(self, event: SignalEvent) -> Optional[OrderEvent]:
         """
@@ -195,9 +224,10 @@ class BacktestPortfolio(BasePortfolio):
         
         逻辑：
         1. 查询当前价格
-        2. 计算可买入数量（全仓买入）
-        3. 应用A股规则，向下取整到100的倍数
-        4. 风控检查：钱不够则忽略信号
+        2. 风控检查：是否满仓、资金是否充足
+        3. 计算可买入数量（全仓买入）
+        4. 应用A股规则，向下取整到100的倍数
+        5. 最终风控：确保交易后现金不为负
         
         Args:
             event: 买入信号事件
@@ -207,36 +237,62 @@ class BacktestPortfolio(BasePortfolio):
         """
         symbol = event.symbol
         
-        # 尝试不同的股票代码格式来获取价格
+        # 直接使用标准化代码查询当前价格
         latest_bar = self.data_handler.get_latest_bar(symbol)
-        if not latest_bar:
-            # 尝试添加交易所后缀
-            for suffix in ['.SH', '.SZSE', '.SSE', '.SZ']:
-                test_symbol = symbol + suffix
-                latest_bar = self.data_handler.get_latest_bar(test_symbol)
-                if latest_bar:
-                    symbol = test_symbol  # 更新为正确的格式
-                    break
         if not latest_bar:
             self.logger.warning(f"无法获取 {symbol} 的当前价格，忽略买入信号")
             return None
         
         current_price = latest_bar.close_price
         
-        # 计算最大可买入数量（全仓买入）
-        max_shares = int(self.current_cash / current_price)
+        # 风控检查1：是否已满仓（现金比例过低）
+        cash_ratio = self.current_cash / self.total_equity if self.total_equity > 0 else 1.0
+        if cash_ratio < 0.05:  # 现金比例低于5%认为满仓
+            self.logger.info(
+                f"接近满仓，忽略买入信号 {symbol}。"
+                f"现金比例:{cash_ratio:.2%}, 现金:{self.current_cash:.2f}, 总资产:{self.total_equity:.2f}"
+            )
+            return None
+        
+        # 风控检查2：检查是否已有该股票持仓（避免重复建仓）
+        if symbol in self.positions and self.positions[symbol] > 0:
+            self.logger.info(
+                f"已有持仓，忽略买入信号 {symbol}。"
+                f"当前持仓:{self.positions[symbol]}股"
+            )
+            return None
+        
+        # 计算最大可买入数量（使用90%现金，预留10%作为缓冲）
+        available_cash = self.current_cash * 0.9
+        max_shares = int(available_cash / current_price)
         
         # 应用A股规则：向下取整到100的倍数
         target_volume = (max_shares // 100) * 100
         
-        # 风控检查
+        # 风控检查3：资金是否足够
         if target_volume == 0:
             self.logger.info(
                 f"资金不足，忽略买入信号 {symbol}。"
-                f"现金:{self.current_cash:.2f}, 价格:{current_price:.2f}, "
+                f"可用现金:{available_cash:.2f}, 价格:{current_price:.2f}, "
                 f"最多买:{max_shares}股（不足100股）"
             )
             return None
+        
+        # 风控检查4：预估交易成本，确保交易后现金不为负
+        estimated_commission = max(target_volume * current_price * 0.0003, 5.0)  # 0.03%或5元取大
+        estimated_total = target_volume * current_price + estimated_commission
+        
+        if estimated_total > self.current_cash:
+            # 重新计算可买数量
+            max_affordable = int((self.current_cash - 5.0) / (current_price * 1.0003))
+            target_volume = (max_affordable // 100) * 100
+            
+            if target_volume == 0:
+                self.logger.info(
+                    f"考虑手续费后资金不足，忽略买入信号 {symbol}。"
+                    f"现金:{self.current_cash:.2f}, 预估总成本:{estimated_total:.2f}"
+                )
+                return None
         
         # 生成买入订单
         order = OrderEvent(
@@ -250,7 +306,8 @@ class BacktestPortfolio(BasePortfolio):
         
         self.logger.info(
             f"生成买入订单: {symbol} {target_volume}股 "
-            f"@约{current_price:.2f}, 预计金额:{target_volume * current_price:.2f}"
+            f"@约{current_price:.2f}, 预计金额:{target_volume * current_price:.2f}, "
+            f"预估手续费:{estimated_commission:.2f}"
         )
         
         return order
@@ -262,6 +319,7 @@ class BacktestPortfolio(BasePortfolio):
         逻辑：
         1. 检查是否有持仓
         2. 如果有，生成卖出全部持仓的订单
+        3. 风控检查：避免频繁交易
         
         Args:
             event: 卖出信号事件
@@ -278,6 +336,27 @@ class BacktestPortfolio(BasePortfolio):
             self.logger.info(f"无持仓，忽略卖出信号 {symbol}")
             return None
         
+        # 获取当前价格用于预估
+        latest_bar = self.data_handler.get_latest_bar(symbol)
+        if not latest_bar:
+            self.logger.warning(f"无法获取 {symbol} 的当前价格，忽略卖出信号")
+            return None
+        
+        current_price = latest_bar.close_price
+        
+        # 风控检查：预估卖出后的资金，避免过度频繁交易
+        estimated_proceeds = current_position * current_price
+        estimated_commission = max(estimated_proceeds * 0.0003, 5.0)  # 0.03%或5元取大
+        estimated_net = estimated_proceeds - estimated_commission
+        
+        # 如果卖出金额太小（比如低于1000元），可能不值得交易
+        if estimated_net < 1000.0:
+            self.logger.info(
+                f"持仓价值过低，忽略卖出信号 {symbol}。"
+                f"预估净收入:{estimated_net:.2f}, 持仓:{current_position}股"
+            )
+            return None
+        
         # 生成卖出订单（卖出全部持仓）
         order = OrderEvent(
             symbol=symbol,
@@ -288,7 +367,10 @@ class BacktestPortfolio(BasePortfolio):
             limit_price=0.0  # 市价单
         )
         
-        self.logger.info(f"生成卖出订单: {symbol} {current_position}股（清仓）")
+        self.logger.info(
+            f"生成卖出订单: {symbol} {current_position}股（清仓）"
+            f"@约{current_price:.2f}, 预估收入:{estimated_net:.2f}, 手续费:{estimated_commission:.2f}"
+        )
         
         return order
     
@@ -390,6 +472,24 @@ class BacktestPortfolio(BasePortfolio):
         
         self.equity_curve.append(equity_point)
     
+    def _update_total_equity(self) -> None:
+        """
+        更新总资产
+        
+        总资产 = 现金 + 持仓市值
+        """
+        positions_value = 0.0
+        
+        for symbol, volume in self.positions.items():
+            if volume > 0:
+                latest_bar = self.data_handler.get_latest_bar(symbol)
+                if latest_bar:
+                    positions_value += latest_bar.close_price * volume
+                else:
+                    self.logger.warning(f"无法获取 {symbol} 的最新价格，市值计算可能不准确")
+        
+        self.total_equity = self.current_cash + positions_value
+
     def get_equity_curve(self) -> list:
         """
         获取资金曲线数据

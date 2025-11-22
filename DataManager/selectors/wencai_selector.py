@@ -8,6 +8,8 @@ import time
 import pandas as pd
 from typing import List, Optional
 from datetime import datetime
+import requests
+from urllib.parse import urlencode
 
 from .base import BaseStockSelector
 
@@ -67,12 +69,25 @@ class WencaiSelector(BaseStockSelector):
         # 检查pywencai是否正确初始化
         if self._wencai is None:
             self.logger.error("pywencai未正确初始化，无法执行选股")
+            self.logger.error("请安装 pywencai: pip install pywencai")
+            return []
+        
+        # 验证Cookie
+        if not self.cookie:
+            self.logger.error("未提供问财Cookie，无法执行选股")
+            self.logger.error("请在 .env 文件中配置 WENCAI_COOKIE")
+            return []
+        
+        if len(self.cookie) < 100:
+            self.logger.error("Cookie长度异常，可能无效或已过期")
+            self.logger.error("请重新获取问财Cookie并更新 .env 配置")
             return []
         
         # 获取查询参数
         query = kwargs.get('query')
         if not query:
             self.logger.error("缺少必需的 'query' 参数")
+            self.logger.error("使用示例: wencai_selector.select_stocks(date, query='银行')")
             return []
         
         # 日期处理
@@ -81,9 +96,29 @@ class WencaiSelector(BaseStockSelector):
         
         self.logger.info(f"执行问财选股查询: {formatted_query}")
         
-        # 重试机制
+        # 增强的重试机制
+        last_exception = None
         for attempt in range(self.retry_count):
             try:
+                # 检查网络连接
+                if attempt > 0:
+                    try:
+                        response = requests.get('https://www.iwencai.com', timeout=5)
+                        if response.status_code != 200:
+                            raise requests.ConnectionError("网络连接异常")
+                    except requests.RequestException as e:
+                        self.logger.warning(f"网络连接检查失败，尝试 {attempt + 1}/{self.retry_count}: {e}")
+                        if attempt < self.retry_count - 1:
+                            time.sleep(self.sleep_time * 2)  # 网络问题时等待更久
+                            continue
+                        else:
+                            raise ConnectionError(
+                                "网络连接失败，请检查:\n"
+                                "1. 网络连接是否正常\n"
+                                "2. 防火墙是否阻止访问问财网站\n"
+                                "3. 代理设置是否正确"
+                            )
+                
                 # 调用问财API
                 result = self._wencai.get(
                     query=formatted_query,
@@ -118,14 +153,76 @@ class WencaiSelector(BaseStockSelector):
                     self.logger.error(f"未知返回类型: {type(result)}")
                     return []
                 
-            except Exception as e:
-                self.logger.error(f"问财查询失败，尝试 {attempt + 1}/{self.retry_count}: {e}")
+            except requests.ConnectionError as e:
+                last_exception = e
+                self.logger.error(f"网络连接错误，尝试 {attempt + 1}/{self.retry_count}: {e}")
                 if attempt < self.retry_count - 1:
-                    time.sleep(self.sleep_time)
+                    time.sleep(self.sleep_time * 2)  # 网络问题等待更久
                     continue
                 else:
-                    self.logger.error("所有重试均失败，返回空列表")
-                    return []
+                    raise ConnectionError(
+                        f"网络连接失败，已重试 {self.retry_count} 次\n"
+                        f"最后错误: {str(e)}\n"
+                        f"请检查:\n"
+                        f"1. 网络连接是否正常\n"
+                        f"2. 防火墙设置\n"
+                        f"3. 代理配置\n"
+                        f"4. 问财网站是否可访问"
+                    ) from e
+                
+            except requests.Timeout as e:
+                last_exception = e
+                self.logger.error(f"请求超时，尝试 {attempt + 1}/{self.retry_count}: {e}")
+                if attempt < self.retry_count - 1:
+                    time.sleep(self.sleep_time * 2)
+                    continue
+                else:
+                    raise TimeoutError(
+                        f"问财请求超时，已重试 {self.retry_count} 次\n"
+                        f"请检查:\n"
+                        f"1. 网络连接速度\n"
+                        f"2. 问财服务器响应时间\n"
+                        f"3. 查询条件是否过于复杂"
+                    ) from e
+                    
+            except Exception as e:
+                last_exception = e
+                error_msg = str(e).lower()
+                
+                # 特殊错误处理
+                if 'cookie' in error_msg or '登录' in error_msg or '认证' in error_msg:
+                    raise ValueError(
+                        f"问财Cookie无效或已过期\n"
+                        f"错误信息: {str(e)}\n"
+                        f"请:\n"
+                        f"1. 重新登录问财网站\n"
+                        f"2. 获取新的Cookie\n"
+                        f"3. 更新 .env 文件中的 WENCAI_COOKIE"
+                    ) from e
+                elif '频率' in error_msg or '限制' in error_msg or 'rate' in error_msg:
+                    self.logger.warning(f"触发频率限制，尝试 {attempt + 1}/{self.retry_count}")
+                    if attempt < self.retry_count - 1:
+                        time.sleep(self.sleep_time * 3)  # 频率限制时等待更久
+                        continue
+                    else:
+                        raise ValueError(
+                            f"触发问财频率限制，已重试 {self.retry_count} 次\n"
+                            f"请稍后再试或降低查询频率"
+                        ) from e
+                else:
+                    self.logger.error(f"问财查询失败，尝试 {attempt + 1}/{self.retry_count}: {e}")
+                    if attempt < self.retry_count - 1:
+                        time.sleep(self.sleep_time)
+                        continue
+                    else:
+                        raise RuntimeError(
+                            f"问财查询失败，已重试 {self.retry_count} 次\n"
+                            f"最后错误: {str(e)}\n"
+                            f"请检查:\n"
+                            f"1. 查询语句是否正确\n"
+                            f"2. Cookie是否有效\n"
+                            f"3. 网络连接是否正常"
+                        ) from e
         
         return []
 
@@ -135,14 +232,29 @@ class WencaiSelector(BaseStockSelector):
         发送一个简单查询测试 Cookie 是否有效。
         """
         if not self.cookie:
-            self.logger.warning("未提供 Cookie，无法验证连接")
+            self.logger.error("未提供问财Cookie，无法验证连接")
+            self.logger.error("请在 .env 文件中配置 WENCAI_COOKIE")
+            return False
+        
+        if len(self.cookie) < 100:
+            self.logger.error("Cookie长度异常，可能无效或已过期")
             return False
         
         if self._wencai is None:
             self.logger.error("pywencai未正确初始化")
+            self.logger.error("请安装 pywencai: pip install pywencai")
             return False
         
         try:
+            # 首先检查网络连接
+            try:
+                response = requests.get('https://www.iwencai.com', timeout=5)
+                if response.status_code != 200:
+                    raise ConnectionError("无法访问问财网站")
+            except requests.RequestException as e:
+                self.logger.error(f"网络连接检查失败: {e}")
+                return False
+            
             # 发送选股查询测试连接（返回DataFrame）
             df = self._wencai.get(
                 query="银行",
@@ -153,11 +265,28 @@ class WencaiSelector(BaseStockSelector):
                 self.logger.info("问财连接验证成功")
                 return True
             else:
-                self.logger.warning("问财连接验证失败：返回空结果")
+                self.logger.error("问财连接验证失败：返回空结果")
+                self.logger.error("可能的原因:")
+                self.logger.error("1. Cookie已过期")
+                self.logger.error("2. 账户未登录问财")
+                self.logger.error("3. 网络访问受限")
                 return False
                 
+        except requests.ConnectionError as e:
+            self.logger.error(f"网络连接失败: {e}")
+            self.logger.error("请检查网络连接和防火墙设置")
+            return False
+        except requests.Timeout as e:
+            self.logger.error(f"网络请求超时: {e}")
+            self.logger.error("请检查网络连接速度")
+            return False
         except Exception as e:
-            self.logger.error(f"问财连接验证失败: {e}")
+            error_msg = str(e).lower()
+            if 'cookie' in error_msg or '登录' in error_msg or '认证' in error_msg:
+                self.logger.error(f"Cookie验证失败: {e}")
+                self.logger.error("请重新获取问财Cookie并更新配置")
+            else:
+                self.logger.error(f"问财连接验证失败: {e}")
             return False
 
     def _parse_codes(self, df) -> List[str]:

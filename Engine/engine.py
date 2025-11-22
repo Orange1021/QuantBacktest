@@ -33,7 +33,7 @@ class BacktestEngine:
     def __init__(
         self,
         data_handler: BaseDataHandler,
-        strategy: Any,  # 策略实例，未来替换为具体的策略基类
+        strategy: Any,  # 策略实例，实现 IStrategy 接口
         portfolio: Any,  # 投资组合实例，未来替换为具体的投资组合类
         execution: Any   # 执行器实例，未来替换为具体的执行器类
     ):
@@ -54,8 +54,14 @@ class BacktestEngine:
         self.portfolio = portfolio
         self.execution = execution
         
-        # 事件队列 - 先进先出
+        # 统一事件队列 - 先进先出
         self.event_queue: Deque[Any] = deque()
+        
+        # 设置策略的事件队列引用
+        if hasattr(strategy, 'set_event_queue'):
+            strategy.set_event_queue(self.event_queue)
+        else:
+            raise AttributeError("策略必须实现 set_event_queue 方法")
         
         # 回测状态
         self.is_running = False
@@ -168,33 +174,16 @@ class BacktestEngine:
         处理行情事件
         
         1. 更新投资组合的持仓市值
-        2. 将行情数据传递给策略进行计算
-        3. 将策略生成的信号加入引擎队列
+        2. 调用策略的模板方法处理行情数据
+        3. 策略直接将信号发送到引擎队列，无需转移
         """
         # 更新投资组合的市值信息
-        if hasattr(self.portfolio, 'update_on_market'):
-            self.portfolio.update_on_market(event)
-        else:
-            self.logger.warning("Portfolio 缺少 update_on_market 方法")
+        self.portfolio.update_on_market(event)
         
-        # 策略处理行情数据
-        if hasattr(self.strategy, '_process_market_data'):
-            self.strategy._process_market_data(event)
-        elif hasattr(self.strategy, 'on_market_data'):
-            self.strategy.on_market_data(event)
-        else:
-            self.logger.warning("Strategy 缺少 on_market_data 方法")
+        # 策略处理行情数据 - 使用模板方法确保状态更新
+        self.strategy._process_market_data(event)
         
-        # 将策略队列中的信号事件转移到引擎队列
-        if hasattr(self.strategy, 'event_queue'):
-            while len(self.strategy.event_queue) > 0:
-                signal_event = self.strategy.event_queue.popleft()
-                if isinstance(signal_event, SignalEvent):
-                    self.event_queue.append(signal_event)
-                    # 注意：signal_events 在 _handle_signal_event 中计数，这里不再重复计数
-                    self.logger.debug(f"策略信号已转移到引擎队列: {signal_event.symbol}")
-                else:
-                    self.logger.warning(f"策略队列中有非信号事件: {type(signal_event)}")
+        # 注意：策略现在直接将信号发送到引擎队列，无需转移
     
     def _handle_signal_event(self, event: SignalEvent) -> None:
         """
@@ -206,19 +195,16 @@ class BacktestEngine:
         self.signal_events += 1
         
         # 投资组合处理信号，可能生成订单
-        if hasattr(self.portfolio, 'process_signal'):
-            order_event = self.portfolio.process_signal(event)
-            
-            # 如果生成了订单，加入队列
-            if order_event is not None:
-                if isinstance(order_event, OrderEvent):
-                    self.event_queue.append(order_event)
-                    self.order_events += 1
-                    self.logger.debug(f"投资组合订单已加入队列: {order_event.symbol}")
-                else:
-                    self.logger.warning(f"Portfolio.process_signal 返回了非 OrderEvent 类型: {type(order_event)}")
-        else:
-            self.logger.warning("Portfolio 缺少 process_signal 方法")
+        order_event = self.portfolio.process_signal(event)
+        
+        # 如果生成了订单，加入队列
+        if order_event is not None:
+            if isinstance(order_event, OrderEvent):
+                self.event_queue.append(order_event)
+                self.order_events += 1
+                self.logger.debug(f"投资组合订单已加入队列: {order_event.symbol}")
+            else:
+                self.logger.warning(f"Portfolio.process_signal 返回了非 OrderEvent 类型: {type(order_event)}")
     
     def _handle_order_event(self, event: OrderEvent) -> None:
         """
@@ -230,18 +216,15 @@ class BacktestEngine:
         # 注意：order_events 在 process_signal 中已经计数了，这里不再重复计数
         
         # 执行器处理订单，可能生成成交
-        if hasattr(self.execution, 'execute_order'):
-            fill_event = self.execution.execute_order(event)
-            
-            # 如果生成了成交，加入队列
-            if fill_event is not None:
-                if isinstance(fill_event, FillEvent):
-                    self.event_queue.append(fill_event)
-                    self.logger.debug(f"执行器成交已加入队列: {fill_event.symbol}")
-                else:
-                    self.logger.warning(f"Execution.execute_order 返回了非 FillEvent 类型: {type(fill_event)}")
-        else:
-            self.logger.warning("Execution 缺少 execute_order 方法")
+        fill_event = self.execution.execute_order(event)
+        
+        # 如果生成了成交，加入队列
+        if fill_event is not None:
+            if isinstance(fill_event, FillEvent):
+                self.event_queue.append(fill_event)
+                self.logger.debug(f"执行器成交已加入队列: {fill_event.symbol}")
+            else:
+                self.logger.warning(f"Execution.execute_order 返回了非 FillEvent 类型: {type(fill_event)}")
     
     def _handle_fill_event(self, event: FillEvent) -> None:
         """
@@ -252,10 +235,7 @@ class BacktestEngine:
         self.fill_events += 1
         
         # 投资组合更新成交信息
-        if hasattr(self.portfolio, 'update_on_fill'):
-            self.portfolio.update_on_fill(event)
-        else:
-            self.logger.warning("Portfolio 缺少 update_on_fill 方法")
+        self.portfolio.update_on_fill(event)
     
     def _show_progress(self) -> None:
         """显示回测进度"""

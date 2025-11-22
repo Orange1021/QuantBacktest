@@ -57,7 +57,7 @@ def test_portfolio_functionality():
         print("❌ 未配置CSV数据路径")
         return False
     
-    test_symbols = ["000001.SZSE", "000002.SZSE", "600000.SSE"]
+    test_symbols = ["000001.SZ", "000002.SZ", "600000.SH"]
     initial_capital = 100000.0
     
     try:
@@ -248,7 +248,7 @@ def test_portfolio_functionality():
         
         # 创建一个需要大量资金的买入信号
         expensive_signal = SignalEvent(
-            symbol="999999.SZSE",  # 不存在的股票
+            symbol="999999.SZ",  # 不存在的股票
             datetime=datetime.now(),
             direction=Direction.LONG,
             strength=0.8
@@ -261,7 +261,7 @@ def test_portfolio_functionality():
         
         # 测试无持仓卖出信号
         no_position_signal = SignalEvent(
-            symbol="888888.SZSE",  # 不存在的股票
+            symbol="888888.SZ",  # 不存在的股票
             datetime=datetime.now(),
             direction=Direction.SHORT,
             strength=0.8

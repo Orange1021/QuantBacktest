@@ -40,7 +40,7 @@ def debug_strategy_signals():
         )
         
         portfolio = BacktestPortfolio(handler, initial_capital=100000.0)
-        strategy = SimpleMomentumStrategy(handler, deque())
+        strategy = SimpleMomentumStrategy(handler)
         strategy.set_portfolio(portfolio)
         
         print(f"📋 测试股票: {test_symbols}")

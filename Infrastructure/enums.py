@@ -18,9 +18,7 @@ class EventType(Enum):
 class Direction(Enum):
     """交易方向枚举"""
     LONG = "LONG"        # 做多/买入
-    BUY = "BUY"          # 买入（与LONG同义）
     SHORT = "SHORT"      # 做空/卖出
-    SELL = "SELL"        # 卖出（与SHORT同义）
 
 
 class OrderType(Enum):

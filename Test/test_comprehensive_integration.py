@@ -72,7 +72,7 @@ def test_comprehensive_integration():
     if not cookie:
         print("❌ 未找到问财Cookie，跳过问财选股测试")
         # 使用预定义的股票列表进行测试
-        test_symbols = ["000001.SZSE", "000002.SZSE", "600000.SSE", "600036.SSE"]
+        test_symbols = ["000001.SZ", "000002.SZ", "600000.SH", "600036.SH"]
         print("📋 使用预定义股票列表进行测试:", test_symbols)
     else:
         try:
@@ -86,18 +86,18 @@ def test_comprehensive_integration():
             
             if not bank_stocks:
                 print("❌ 问财选股失败，使用预定义股票列表")
-                test_symbols = ["000001.SZSE", "000002.SZSE", "600000.SSE", "600036.SSE"]
+                test_symbols = ["000001.SZ", "000002.SZ", "600000.SH", "600036.SH"]
             else:
-                print(f"✅ 问财选股成功，获取到 {len(bank_stocks)} 只银行股")
-                # 对股票代码进行排序以确保每次测试结果一致
-                sorted_bank_stocks = sorted(bank_stocks)
-                test_symbols = sorted_bank_stocks[:6]  # 取前6只进行测试
-                print(f"📋 测试股票: {test_symbols}")
+                if bank_stocks:
+                    print(f"✅ 问财选股成功，获取到 {len(bank_stocks)} 只银行股")
+                    # 取前6只进行测试
+                    test_symbols = bank_stocks[:6]  # 取前6只进行测试
+                    print(f"📋 测试股票: {test_symbols}")
                 
         except Exception as e:
             print(f"❌ 问财选股出错: {e}")
             print("📋 使用预定义股票列表进行测试")
-            test_symbols = ["000001.SZSE", "000002.SZSE", "600000.SSE", "600036.SSE"]
+            test_symbols = ["000001.SZ", "000002.SZ", "600000.SH", "600036.SH"]
     
     # 步骤2: CSV数据加载
     print(f"\n步骤2: CSV数据加载测试")
@@ -145,7 +145,7 @@ def test_comprehensive_integration():
         # 创建测试事件
         test_bar = BarData(
             symbol="000001",
-            exchange=Exchange.SZSE,
+            exchange=Exchange.SZ,
             datetime=datetime(2025, 1, 1),
             interval=Interval.DAILY,
             open_price=10.0,
@@ -235,25 +235,38 @@ def test_comprehensive_integration():
             end_date=datetime(2025, 1, 10)
         )
         
-        # 创建真实的组件
-        strategy = SimpleMomentumStrategy(handler, deque())  # 策略使用自己的队列
+        # 按照正确顺序创建和组装组件
+        # 1. Data Handler 已创建
+        
+        # 2. 创建 Portfolio (需要 Data Handler)
         portfolio = BacktestPortfolio(handler, initial_capital=100000.0)
+        
+        # 3. 创建 Strategy (需要 Data Handler，稍后设置 Portfolio 引用)
+        strategy = SimpleMomentumStrategy(handler)
+        
+        # 4. 建立 Strategy 和 Portfolio 的双向引用
+        strategy.set_portfolio(portfolio)
+        
+        # 5. 创建 Execution (需要 Data Handler)
         execution = SimulatedExecution(
             data_handler=handler,
             commission_rate=0.0003,
             slippage_rate=0.001
         )
         
-        # 建立策略和投资组合的连接
-        strategy.set_portfolio(portfolio)
-        
-        # 创建回测引擎
+        # 6. 创建 Engine (需要所有组件，会自动设置 Strategy 的事件队列)
         engine = BacktestEngine(
             data_handler=handler,
             strategy=strategy,
             portfolio=portfolio,
             execution=execution
         )
+        
+        # 7. 验证所有引用关系正确建立
+        assert strategy.portfolio is portfolio, "Strategy 未正确引用 Portfolio"
+        assert strategy.event_queue is engine.event_queue, "Strategy 未正确引用 Engine 的事件队列"
+        assert portfolio.data_handler is handler, "Portfolio 未正确引用 Data Handler"
+        assert execution.data_handler is handler, "Execution 未正确引用 Data Handler"
         
         print("✅ BacktestEngine和模拟组件创建成功")
         

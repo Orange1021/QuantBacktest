@@ -66,7 +66,7 @@ def run_complete_backtest_analysis():
         print(f"\n🔄 步骤2: 创建回测组件")
         print("-" * 40)
         
-        strategy = SimpleMomentumStrategy(handler, deque())
+        strategy = SimpleMomentumStrategy(handler)
         portfolio = BacktestPortfolio(handler, initial_capital=100000.0)
         execution = SimulatedExecution(
             data_handler=handler,
