@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 from .base import BasePortfolio
@@ -12,43 +12,66 @@ from Infrastructure.events import MarketEvent, SignalEvent, OrderEvent, FillEven
 from Infrastructure.enums import Direction, OrderType
 from DataManager.handlers.handler import BaseDataHandler
 from DataManager.schema.bar import BarData
+from Portfolio.sizers import create_sizer
 
 
 class BacktestPortfolio(BasePortfolio):
     """
     现货回测投资组合
-    
+
     这是系统的"会计师兼风控官"，负责：
     1. 资金管理 (Capital Management)：维护现金和持仓
     2. 信号转化 (Signal -> Order)：将策略建议转化为具体订单
     3. 成交处理 (Fill Processing)：实际扣款、记账
     4. 盯市 (Mark-to-Market)：更新总资产
     """
-    
+
     def __init__(self, data_handler: BaseDataHandler, initial_capital: float = 100000.0):
         """
         初始化投资组合
-        
+
         Args:
             data_handler: 数据处理器，用于查询当前价格
             initial_capital: 初始资金，默认10万
         """
         super().__init__(data_handler, initial_capital)
-        
+
         # 核心状态
         self.current_cash = initial_capital  # 当前可用现金
         self.positions: Dict[str, int] = {}  # 持仓字典 {symbol: volume}
         self.total_equity = initial_capital  # 总资产 = 现金 + 持仓市值
-        
-        # 交易统计
+
+        # 交易统计（补充初始化）
         self.total_trades = 0
         self.total_commission = 0.0
-        
+
         # 资金曲线记录
         self.equity_curve = []  # 记录每日资金变化
-        
+
+        # 成交历史记录（补充初始化）
+        self.fill_history = []  # 记录所有成交事件
+
+        # 仓位管理参数（可配置）
+        self.max_positions = 10  # 最大同时持仓数量
+        self.cash_reserve_ratio = 0.10  # 现金预留比例（10%）
+
+        # 初始化仓位管理器（等权重策略）
+        try:
+            from config.settings import settings
+            sizer_type = settings.get_config('portfolio.sizer.type', 'equal_weight')
+            sizer_params = settings.get_config('portfolio.sizer.params', {})
+            self.sizer = create_sizer(sizer_type, **sizer_params)
+            self.sizer.set_logger(logging.getLogger(__name__))
+            self.logger.info(f"仓位管理器初始化成功: {sizer_type}")
+        except Exception as e:
+            self.logger.warning(f"从配置加载Sizer失败 ({e})，使用默认等权重策略")
+            self.sizer = create_sizer('equal_weight', max_positions=self.max_positions)
+            self.sizer.set_logger(logging.getLogger(__name__))
+
         self.logger.info(f"BacktestPortfolio 初始化完成")
         self.logger.info(f"初始资金: {self.current_cash:,.2f}")
+        self.logger.info(f"最大持仓数: {self.max_positions}")
+        self.logger.info(f"现金预留比例: {self.cash_reserve_ratio:.2%}")
     
     def update_on_market(self, event: MarketEvent) -> None:
         """
@@ -173,6 +196,9 @@ class BacktestPortfolio(BasePortfolio):
             # 更新总资产
             self._update_total_equity()
             
+            # 新增：保存成交记录
+            self._record_fill(event)
+            
             # 资金安全检查
             if self.current_cash < 0:
                 self.logger.error(f"警告：现金余额为负数！{self.current_cash:.2f}")
@@ -220,40 +246,29 @@ class BacktestPortfolio(BasePortfolio):
     
     def _process_buy_signal(self, event: SignalEvent) -> Optional[OrderEvent]:
         """
-        处理买入信号
-        
+        处理买入信号（使用Sizer策略模式）
+
         逻辑：
-        1. 查询当前价格
-        2. 风控检查：是否满仓、资金是否充足
-        3. 计算可买入数量（全仓买入）
-        4. 应用A股规则，向下取整到100的倍数
-        5. 最终风控：确保交易后现金不为负
-        
+        1. 委托Sizer计算目标资金
+        2. 投资组合执行最终风控
+        3. 应用A股规则（100股倍数）
+
         Args:
             event: 买入信号事件
-            
+
         Returns:
             买入订单事件，或None
         """
         symbol = event.symbol
-        
-        # 直接使用标准化代码查询当前价格
-        latest_bar = self.data_handler.get_latest_bar(symbol)
-        if not latest_bar:
-            self.logger.warning(f"无法获取 {symbol} 的当前价格，忽略买入信号")
-            return None
-        
-        current_price = latest_bar.close_price
-        
-        # 风控检查1：是否已满仓（现金比例过低）
-        cash_ratio = self.current_cash / self.total_equity if self.total_equity > 0 else 1.0
-        if cash_ratio < 0.05:  # 现金比例低于5%认为满仓
+
+        # 风控检查1：是否已达到最大持仓数量
+        if len(self.positions) >= self.max_positions:
             self.logger.info(
-                f"接近满仓，忽略买入信号 {symbol}。"
-                f"现金比例:{cash_ratio:.2%}, 现金:{self.current_cash:.2f}, 总资产:{self.total_equity:.2f}"
+                f"已达最大持仓数({self.max_positions})，忽略买入信号 {symbol}。"
+                f"当前持仓: {len(self.positions)}只"
             )
             return None
-        
+
         # 风控检查2：检查是否已有该股票持仓（避免重复建仓）
         if symbol in self.positions and self.positions[symbol] > 0:
             self.logger.info(
@@ -261,39 +276,62 @@ class BacktestPortfolio(BasePortfolio):
                 f"当前持仓:{self.positions[symbol]}股"
             )
             return None
-        
-        # 计算最大可买入数量（使用90%现金，预留10%作为缓冲）
-        available_cash = self.current_cash * 0.9
-        max_shares = int(available_cash / current_price)
-        
-        # 应用A股规则：向下取整到100的倍数
-        target_volume = (max_shares // 100) * 100
-        
-        # 风控检查3：资金是否足够
-        if target_volume == 0:
+
+        # 查询当前价格
+        latest_bar = self.data_handler.get_latest_bar(symbol)
+        if not latest_bar:
+            self.logger.warning(f"无法获取 {symbol} 的当前价格，忽略买入信号")
+            return None
+
+        current_price = latest_bar.close_price
+
+        # 使用Sizer计算目标金额（单位：元）
+        target_value = self.sizer.calculate_target_value(
+            portfolio=self,
+            signal=event,
+            data_handler=self.data_handler
+        )
+
+        if target_value <= 0:
             self.logger.info(
-                f"资金不足，忽略买入信号 {symbol}。"
-                f"可用现金:{available_cash:.2f}, 价格:{current_price:.2f}, "
-                f"最多买:{max_shares}股（不足100股）"
+                f"Sizer返回的目标金额为0，忽略买入信号 {symbol}"
             )
             return None
-        
-        # 风控检查4：预估交易成本，确保交易后现金不为负
-        estimated_commission = max(target_volume * current_price * 0.0003, 5.0)  # 0.03%或5元取大
+
+        # 将目标金额转换为股数
+        target_volume = int(target_value / current_price)
+
+        # 应用A股规则：向下取整到100的倍数
+        target_volume = (target_volume // 100) * 100
+
+        # 风控检查3：数量必须大于0
+        if target_volume == 0:
+            self.logger.info(
+                f"计算出的买入数量为0，忽略买入信号 {symbol}。"
+                f"目标金额:{target_value:.2f}, 价格:{current_price:.2f}"
+            )
+            return None
+
+        # 风控检查4：预估总成本不能超过可用现金
+        estimated_commission = max(target_volume * current_price * 0.0003, 5.0)
         estimated_total = target_volume * current_price + estimated_commission
-        
+
         if estimated_total > self.current_cash:
-            # 重新计算可买数量
+            # 重新计算可买数量（All-in remaining cash）
             max_affordable = int((self.current_cash - 5.0) / (current_price * 1.0003))
             target_volume = (max_affordable // 100) * 100
-            
+
             if target_volume == 0:
                 self.logger.info(
-                    f"考虑手续费后资金不足，忽略买入信号 {symbol}。"
+                    f"资金不足，忽略买入信号 {symbol}。"
                     f"现金:{self.current_cash:.2f}, 预估总成本:{estimated_total:.2f}"
                 )
                 return None
-        
+
+            # 重新计算金额
+            estimated_commission = max(target_volume * current_price * 0.0003, 5.0)
+            estimated_total = target_volume * current_price + estimated_commission
+
         # 生成买入订单
         order = OrderEvent(
             symbol=symbol,
@@ -303,13 +341,16 @@ class BacktestPortfolio(BasePortfolio):
             volume=target_volume,
             limit_price=0.0  # 市价单
         )
-        
+
+        actual_cost = estimated_total
+
         self.logger.info(
             f"生成买入订单: {symbol} {target_volume}股 "
             f"@约{current_price:.2f}, 预计金额:{target_volume * current_price:.2f}, "
-            f"预估手续费:{estimated_commission:.2f}"
+            f"手续费:{estimated_commission:.2f}, 总成本:{actual_cost:.2f}, "
+            f"剩余现金: {self.current_cash - actual_cost:,.2f}"
         )
-        
+
         return order
     
     def _process_sell_signal(self, event: SignalEvent) -> Optional[OrderEvent]:
@@ -490,6 +531,40 @@ class BacktestPortfolio(BasePortfolio):
         
         self.total_equity = self.current_cash + positions_value
 
+    def _record_fill(self, event: FillEvent) -> None:
+        """
+        记录成交事件到历史记录
+        
+        Args:
+            event: 成交事件
+        """
+        fill_record = {
+            'datetime': event.datetime,
+            'symbol': event.symbol,
+            'direction': event.direction.value,
+            'volume': event.volume,
+            'price': event.price,
+            'commission': event.commission,
+            'trade_value': event.trade_value,
+            'net_value': event.net_value
+        }
+        
+        self.fill_history.append(fill_record)
+        
+        self.logger.debug(
+            f"记录成交: {event.symbol} {event.direction.value} {event.volume}股 "
+            f"@{event.price:.2f}, 手续费:{event.commission:.2f}"
+        )
+    
+    def get_fill_history(self) -> List[Dict[str, Any]]:
+        """
+        获取成交历史记录
+        
+        Returns:
+            成交记录列表的副本
+        """
+        return self.fill_history.copy()
+    
     def get_equity_curve(self) -> list:
         """
         获取资金曲线数据

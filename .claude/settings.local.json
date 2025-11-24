@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(nul:*)",
+      "Bash(python main.py)",
+      "Bash(Select-String:*)",
+      "Bash(timeout 60 python:*)",
+      "Bash(test_output.log)",
+      "Bash(python -m DataManager.sources.local_csv --test-symbol 688041)",
+      "Bash(python -c:*)",
+      "Bash(cat -A:*)",
+      "Bash(timeout 180 python main.py)",
+      "Bash(timeout:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

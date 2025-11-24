@@ -474,7 +474,7 @@ class BacktestPlotter:
         # 保存图表
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
         self.logger.info(f"Chart saved to: {filepath}")
-        print(f"📊 Chart saved to: {filepath}")
+        print(f"[CHART] Chart saved to: {filepath}")
     
     def create_full_report(self, save_prefix: str = "backtest_report"):
         """创建完整的分析报告
@@ -500,8 +500,8 @@ class BacktestPlotter:
         self.plot_rolling_metrics(save_path=f"{save_prefix}_rolling.png")
         
         self.logger.info("Full analysis report generation completed")
-        print(f"🎉 Full analysis report generated in folder: {self.output_dir}")
-        print(f"📁 Report files with prefix: {save_prefix}")
+        print(f"[REPORT] Full analysis report generated in folder: {self.output_dir}")
+        print(f"[FILES] Report files with prefix: {save_prefix}")
     
     def _create_timestamp_folder(self) -> Path:
         """创建带时间戳的输出文件夹

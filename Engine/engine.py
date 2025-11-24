@@ -62,7 +62,13 @@ class BacktestEngine:
             strategy.set_event_queue(self.event_queue)
         else:
             raise AttributeError("策略必须实现 set_event_queue 方法")
-        
+
+        # 设置策略的投资组合引用（用于查询持仓状态）
+        if hasattr(strategy, 'set_portfolio'):
+            strategy.set_portfolio(self.portfolio)
+        else:
+            self.logger.warning("策略未实现 set_portfolio 方法，无法查询持仓状态")
+
         # 回测状态
         self.is_running = False
         self.current_time: Optional[datetime] = None

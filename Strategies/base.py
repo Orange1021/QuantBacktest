@@ -27,6 +27,15 @@ class IStrategy(ABC):
     def set_event_queue(self, event_queue: deque) -> None:
         """设置事件队列的抽象方法"""
         pass
+    
+    @classmethod
+    def get_selection_query(cls) -> str:
+        """
+        定义策略的静态选股条件。
+        Returns:
+            str: 问财查询语句，默认返回 None。
+        """
+        return None
 
 
 class BaseStrategy(IStrategy, ABC):
@@ -43,36 +52,47 @@ class BaseStrategy(IStrategy, ABC):
     def __init__(self, data_handler: BaseDataHandler):
         """
         初始化策略
-        
+
         Args:
             data_handler: 数据处理器，用于获取历史数据
         """
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
+
         # 核心依赖
         self.data_handler = data_handler
         self.event_queue: Optional[deque] = None  # 延迟注入
-        
+        self.portfolio = None  # 延迟注入，由引擎设置
+
         # 策略状态
         self.is_initialized = False
         self.current_time: Optional[datetime] = None
-        
+
         # 统计信息
         self.signals_generated = 0
         self.market_data_processed = 0
-        
+
         self.logger.info(f"{self.__class__.__name__} 策略初始化完成")
     
     def set_event_queue(self, event_queue: deque) -> None:
         """
         设置事件队列
-        
+
         Args:
             event_queue: 引擎提供的事件队列引用
         """
         self.event_queue = event_queue
         self.logger.debug(f"{self.__class__.__name__} 事件队列已设置")
-    
+
+    def set_portfolio(self, portfolio) -> None:
+        """
+        设置投资组合引用
+
+        Args:
+            portfolio: Portfolio实例，用于查询持仓状态
+        """
+        self.portfolio = portfolio
+        self.logger.debug(f"{self.__class__.__name__} Portfolio引用已设置")
+
     @abstractmethod
     def on_market_data(self, event: MarketEvent) -> None:
         """

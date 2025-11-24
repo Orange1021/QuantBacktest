@@ -104,14 +104,22 @@ class LocalCSVLoader(BaseDataSource):
     def _parse_datetime(self, date_str) -> datetime:
         """
         辅助方法：解析日期列
-        
+
         Logic:
-            将"20251114" (str或int) 转换为datetime(2025, 11, 14)
+            将"20251114" (str, int或float) 转换为datetime(2025, 11, 14)
+            处理NaN值的情况
         """
         try:
-            if isinstance(date_str, int):
-                date_str = str(date_str)
-            if len(date_str) == 8:
+            # 检查是否为NaN（float类型的NaN或pandas的NaT/NaN）
+            if pd.isna(date_str):
+                raise ValueError(f"日期值为NaN: {date_str}")
+
+            # 处理int和float类型（如20251114或20251114.0）
+            if isinstance(date_str, (int, float)):
+                # 确保不是NaN后再转换
+                date_str = str(int(date_str))  # 先转int去掉小数，再转str
+
+            if isinstance(date_str, str) and len(date_str) == 8:
                 return datetime.strptime(date_str, "%Y%m%d")
             else:
                 # 尝试其他可能的日期格式
@@ -268,7 +276,14 @@ class LocalCSVLoader(BaseDataSource):
                     f"当前列名: {list(df.columns)}\n"
                     f"请确保CSV文件包含标准的A股数据列名"
                 )
-            
+
+            # 过滤掉日期为NaN的行（避免解析错误）
+            df_before = len(df)
+            df = df.dropna(subset=['交易日期']).copy()
+            df_after = len(df)
+            if df_before != df_after:
+                self.logger.warning(f"{symbol}: 过滤掉 {df_before - df_after} 行日期为NaN的数据")
+
             # 转换日期列
             df['datetime'] = df['交易日期'].apply(self._parse_datetime)
             

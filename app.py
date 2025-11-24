@@ -22,6 +22,7 @@ from Execution.simulator import SimulatedExecution
 from Engine.engine import BacktestEngine
 from Analysis.performance import PerformanceAnalyzer
 from Analysis.plotting import BacktestPlotter
+from Analysis.reporting import BacktestReporter
 
 
 class BacktestApplication:
@@ -122,8 +123,8 @@ class BacktestApplication:
         self.logger.info("=" * 60)
         
         try:
-            # 1. 设置数据
-            data_handler, symbols = self._setup_data(symbol_list)
+            # 1. 设置数据（传递策略类用于策略驱动选股）
+            data_handler, symbols = self._setup_data(symbol_list, strategy_class)
             
             # 2. 设置策略
             strategy = self._setup_strategy(strategy_class, data_handler)
@@ -153,12 +154,13 @@ class BacktestApplication:
             self.logger.error(f"回测执行失败: {e}")
             raise
     
-    def _setup_data(self, symbol_list: Optional[List[str]] = None) -> tuple:
+    def _setup_data(self, symbol_list: Optional[List[str]] = None, strategy_class: Type = None) -> tuple:
         """
         设置数据组件，包含数据过滤逻辑
         
         Args:
             symbol_list: 股票代码列表
+            strategy_class: 策略类，用于策略驱动选股
             
         Returns:
             (data_handler, actual_symbols) 元组
@@ -167,7 +169,7 @@ class BacktestApplication:
         
         # 确定股票列表
         if symbol_list is None:
-            symbols = self._get_symbol_list()
+            symbols = self._get_symbol_list(strategy_class)
         else:
             # 如果是外部传入的股票列表，也需要进行过滤
             symbols = self._filter_external_symbols(symbol_list)
@@ -222,23 +224,32 @@ class BacktestApplication:
             self.logger.warning(f"外部股票列表过滤失败，使用原始列表: {e}")
             return symbol_list
     
-    def _get_symbol_list(self) -> List[str]:
+    def _get_symbol_list(self, strategy_class: Type = None) -> List[str]:
         """
-        获取股票列表，实现 surplus selection + filtering 策略
+        获取股票列表，实现策略驱动的选股逻辑
         
         逻辑：
-        1. 问财选股获取超过目标数量的股票（如需要5只，获取10只）
-        2. 使用 LocalCSVLoader 快速过滤掉本地没有CSV文件的股票
-        3. 从剩余的有效股票中选取目标数量
+        1. 优先使用策略定义的选股查询
+        2. 如果策略没有定义查询，回退到默认逻辑
+        3. 使用 LocalCSVLoader 快速过滤掉本地没有CSV文件的股票
+        4. 从剩余的有效股票中选取目标数量
         
         优先级：
-        1. 问财选股 + 过滤（如果配置了Cookie）
-        2. 配置文件默认列表
-        3. 硬编码备用列表
+        1. 策略驱动选股 + 过滤（如果策略定义了查询且配置了Cookie）
+        2. 问财默认选股 + 过滤（如果配置了Cookie）
+        3. 配置文件默认列表
+        4. 硬编码备用列表
         """
         # 获取目标持仓数量
         target_positions = settings.get_config('strategy.parameters.max_positions', 5)
         surplus_factor = 2  # 获取目标数量的2倍，确保有足够的选择
+        
+        # 尝试策略驱动的问财选股
+        strategy_query = None
+        if strategy_class and hasattr(strategy_class, 'get_selection_query'):
+            strategy_query = strategy_class.get_selection_query()
+            if strategy_query:
+                self.logger.info(f"使用策略定义的选股查询: {strategy_query}")
         
         # 尝试问财选股
         cookie = settings.get_env('WENCAI_COOKIE')
@@ -248,13 +259,16 @@ class BacktestApplication:
                 selector = WencaiSelector(cookie=cookie)
                 
                 if selector.validate_connection():
+                    # 使用策略查询或默认查询
+                    query = strategy_query if strategy_query else "银行"
+                    
                     # 获取超过目标数量的股票
                     surplus_count = target_positions * surplus_factor
-                    self.logger.info(f"目标持仓: {target_positions}, 获取 {surplus_count} 只股票进行过滤")
+                    self.logger.info(f"目标持仓: {target_positions}, 查询: {query}, 获取 {surplus_count} 只股票进行过滤")
                     
                     symbols = selector.select_stocks(
                         date=datetime.now(),
-                        query="银行"
+                        query=query
                     )
                     
                     if symbols:
@@ -287,6 +301,9 @@ class BacktestApplication:
                     
             except Exception as e:
                 self.logger.warning(f"问财选股失败，回退到默认列表: {e}")
+                # 网络问题或其他异常，回退到硬编码列表
+                self.logger.warning("使用硬编码备用列表（网络异常）")
+                return ["000001.SZ", "600000.SH"]
         
         # 使用配置文件默认列表
         default_symbols = settings.get_config('backtest.default_symbols')
@@ -421,8 +438,12 @@ class BacktestApplication:
                 self.logger.warning("资金曲线数据不足，无法进行详细分析")
                 return self._get_basic_results(portfolio, engine)
             
-            # 创建分析器
-            analyzer = PerformanceAnalyzer(equity_curve)
+            # 获取成交记录
+            trades = portfolio.get_fill_history()
+            self.logger.info(f"获取到 {len(trades)} 条成交记录")
+            
+            # 创建分析器（传递成交记录）
+            analyzer = PerformanceAnalyzer(equity_curve, trades_list=trades)
             
             # 计算关键指标
             total_return = analyzer.calculate_total_return()
@@ -436,15 +457,37 @@ class BacktestApplication:
                 # 创建BacktestPlotter，直接使用我们指定的时间戳文件夹
                 plotter = BacktestPlotter(analyzer, output_dir=self.output_dir)
                 self.logger.info("BacktestPlotter创建成功")
-                
+
                 # 生成完整报告（这会直接在我们指定的文件夹中创建图表）
                 plotter.create_full_report("backtest_report")
                 self.logger.info("完整分析报告生成成功")
-                
+
             except Exception as e:
                 self.logger.error(f"图表生成失败: {e}")
                 # 如果图表生成失败，至少保证回测结果正常
                 pass
+
+            # 生成专业报告（CSV明细 + TXT总结）
+            try:
+                self.logger.info("生成专业回测报告...")
+                reporter = BacktestReporter(analyzer)
+
+                # 保存交易明细CSV（用于Excel复盘）
+                trades_csv_path = self.output_dir / "trades.csv"
+                reporter.save_trades_csv(trades_csv_path)
+                self.logger.info(f"交易明细CSV已保存: {trades_csv_path}")
+
+                # 保存总结报告TXT（给人看的专业报告）
+                report_txt_path = self.output_dir / "report.txt"
+                strategy_name = self.strategy.__class__.__name__ if self.strategy else "Unknown"
+                reporter.save_summary_report(report_txt_path, strategy_name=strategy_name)
+                self.logger.info(f"总结报告已保存: {report_txt_path}")
+
+                self.logger.info("[OK] 专业报告生成完成")
+
+            except Exception as e:
+                self.logger.error(f"专业报告生成失败: {e}")
+                # 报告生成失败不影响主流程
             
             # 打印关键指标
             self.logger.info("=" * 40)
@@ -459,7 +502,9 @@ class BacktestApplication:
             # 获取详细摘要
             summary = analyzer.get_summary()
             self.logger.info(f"交易天数: {summary['trading_days']}")
+            self.logger.info(f"总交易次数: {summary['total_trades']}")
             self.logger.info(f"胜率: {summary['win_rate']*100:.2f}%")
+            self.logger.info(f"盈亏比: {summary['profit_loss_ratio']:.3f}")
             self.logger.info(f"卡尔玛比率: {summary['calmar_ratio']:.3f}")
             
             # 返回完整结果（图表已由BacktestPlotter保存到self.output_dir）

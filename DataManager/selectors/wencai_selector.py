@@ -10,6 +10,7 @@ from typing import List, Optional
 from datetime import datetime
 import requests
 from urllib.parse import urlencode
+import os
 
 from .base import BaseStockSelector
 
@@ -248,9 +249,14 @@ class WencaiSelector(BaseStockSelector):
         try:
             # 首先检查网络连接
             try:
-                response = requests.get('https://www.iwencai.com', timeout=5)
-                if response.status_code != 200:
-                    raise ConnectionError("无法访问问财网站")
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Cookie': self.cookie
+                }
+                response = requests.get('https://www.iwencai.com', timeout=5, headers=headers)
+                # 403是正常的，问财网站会阻止直接访问，但这不影响pywencai功能
+                if response.status_code not in [200, 403]:
+                    raise ConnectionError(f"问财网站返回异常状态码: {response.status_code}")
             except requests.RequestException as e:
                 self.logger.error(f"网络连接检查失败: {e}")
                 return False
@@ -351,8 +357,8 @@ class WencaiSelector(BaseStockSelector):
                 stock_codes.append(code_str)
                 self.logger.warning(f"非标准长度代码: {code_str}")
         
-        # 去重并返回
-        unique_codes = list(set(stock_codes))
-        self.logger.debug(f"解析得到 {len(unique_codes)} 只股票代码")
-        
-        return unique_codes
+        # 问财已按用户指定条件排序（如市值从大到小），直接返回保持排序
+        # 信任问财结果，不进行set去重（问财结果理论上无重复）
+        self.logger.debug(f"解析得到 {len(stock_codes)} 只股票代码")
+
+        return stock_codes

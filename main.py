@@ -46,28 +46,19 @@ if __name__ == "__main__":
     apply_argument_overrides(args)
     
     # 导入策略类
-    from Strategies.simple_strategy import SimpleMomentumStrategy
-    
-    # 定义默认股票列表
-    default_symbols = [
-        "000001.SZ",  # 平安银行
-        "000002.SZ",  # 万科A
-        "600000.SH",  # 浦发银行
-        "600036.SH",  # 招商银行
-    ]
+    from Strategies.macd_kdj_strategy import MACDKDJStrategy
     
     try:
         # 创建应用实例
         app = BacktestApplication()
         
-        # 运行回测
+        # 运行回测（使用策略驱动选股，不指定symbol_list）
         results = app.run(
-            strategy_class=SimpleMomentumStrategy,
-            symbol_list=default_symbols
+            strategy_class=MACDKDJStrategy
         )
         
-        print("\n🎉 回测完成！查看 output/ 目录获取详细报告。")
-        
+        print("\n[SUCCESS] 回测完成！查看 output/ 目录获取详细报告。")
+
     except Exception as e:
-        print(f"\n❌ 回测失败: {e}")
+        print(f"\n[ERROR] 回测失败: {e}")
         sys.exit(1)
