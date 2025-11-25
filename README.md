@@ -22,191 +22,123 @@
 - **标准化数据格式** - 统一使用 Backtrader/VeighNa 标准 (代码.交易所)
 - **精确资金管理** - 工业级精度的资金计算和风控机制
 - **模块化架构** - 基于抽象基类的可扩展设计
+- **仓位管理策略** - 支持等权重、固定比例、信号强度加权、ATR等多种仓位分配策略
+- **丰富策略库** - 内置简单动量、移动平均、MACD+KDJ等多种策略
+- **专业分析报告** - 自动生成详细的绩效分析报告和可视化图表
+- **完整测试覆盖** - 20+个测试用例，确保系统稳定性
 
 ## 📁 项目结构
 
 ```
 QuantBacktest/
-
-├── .env                         # 环境变量配置文件
-
 ├── .gitignore                   # Git忽略文件配置
-
+├── CODE_ISSUES.md               # 代码问题记录
 ├── PROJECT_SPECIFICATION.md     # 项目说明书
-
 ├── README.md                    # 项目说明文档
-
 ├── requirements.txt             # 项目依赖文件
-
+├── app.py                       # 应用程序主入口
+├── main.py                      # 命令行入口
+├── .claude/                     # Claude配置目录
+│   └── settings.local.json      # 本地配置
 ├── config/                       # 配置管理模块
-
 │   ├── config.yaml               # 业务配置文件
-
+│   ├── sizer_config.yaml         # 仓位管理配置
 │   ├── settings.py               # 配置读取类
-
 │   └── __init__.py
-
 ├── DataManager/                  # 数据管理模块
-
-│   ├── api.py                    # 数据管理API接口
-
 │   ├── __init__.py
-
 │   ├── feeds/                    # 数据流处理
-
+│   │   ├── __init__.py
 │   │   ├── base_feed.py          # 基础数据流类
-
 │   │   ├── lazy_feed.py          # 懒加载数据流
-
-│   │   ├── mem_feed.py           # 内存数据流
-
-│   │   └── __init__.py
-
+│   │   └── mem_feed.py           # 内存数据流
 │   ├── handlers/                 # 数据驱动层
-
-│   │   ├── handler.py            # 数据处理器实现（已重构）
-
-│   │   └── __init__.py
-
+│   │   ├── __init__.py
+│   │   └── handler.py            # 数据处理器实现
 │   ├── processors/               # 数据处理器
-
+│   │   ├── __init__.py
 │   │   ├── adjuster.py           # 数据调整器
-
 │   │   ├── cleaner.py            # 数据清洗器
-
 │   │   ├── merger.py             # 数据合并器
-
-│   │   ├── resampler.py          # 数据重采样器
-
-│   │   └── __init__.py
-
+│   │   └── resampler.py          # 数据重采样器
 │   ├── schema/                   # 数据结构定义
-
+│   │   ├── __init__.py
 │   │   ├── base.py               # 基础数据类
-
 │   │   ├── bar.py                # K线数据类
-
 │   │   ├── constant.py           # 常量定义
-
 │   │   ├── fundamental.py        # 财务数据类
-
-│   │   ├── tick.py               # Tick数据类
-
-│   │   └── __init__.py
-
+│   │   └── tick.py               # Tick数据类
 │   ├── selectors/                # 选股器模块
-
+│   │   ├── __init__.py
 │   │   ├── base.py               # 选股器基类
-
 │   │   ├── tushare_selector.py   # Tushare选股器
-
-│   │   ├── wencai_selector.py    # 问财选股器
-
-│   │   └── __init__.py
-
+│   │   └── wencai_selector.py    # 问财选股器
 │   ├── sources/                  # 数据源适配器
-
+│   │   ├── __init__.py
 │   │   ├── base_source.py        # 数据源基类
-
 │   │   ├── binance.py            # 币安数据源
-
 │   │   ├── local_csv.py          # 本地CSV数据源
-
 │   │   ├── tushare.py            # Tushare数据源
-
-│   │   ├── yfinance.py           # Yahoo Finance数据源
-
-│   │   └── __init__.py
-
+│   │   └── yfinance.py           # Yahoo Finance数据源
 │   └── storage/                  # 数据存储模块
-
+│       ├── __init__.py
 │       ├── base_store.py         # 存储基类
-
 │       ├── csv_store.py          # CSV存储
-
 │       ├── hdf5_store.py         # HDF5存储
-
 │       ├── influx_store.py       # InfluxDB存储
-
-│       ├── mysql_store.py        # MySQL存储
-
-│       └── __init__.py
-
-├── Engine/                       # 回测引擎模块（已完成）
-
-│   ├── engine.py                 # 回测引擎核心
-
-│   └── __init__.py
-
-├── Execution/                    # 撮合执行模块（已完成）
-
+│       └── mysql_store.py        # MySQL存储
+├── Engine/                       # 回测引擎模块
+│   ├── __init__.py
+│   └── engine.py                 # 回测引擎核心
+├── Execution/                    # 撮合执行模块
+│   ├── __init__.py
 │   ├── base.py                   # 执行器基类
-
-│   ├── simulator.py              # 模拟执行器
-
-│   └── __init__.py
-
+│   └── simulator.py              # 模拟执行器
 ├── Infrastructure/               # 基础设施模块
-
-│   ├── enums.py                  # 枚举定义（新增）
-
-│   ├── events.py                 # 事件系统定义（已重构）
-
-│   └── __init__.py
-
-├── Portfolio/                    # 投资组合模块（已完成）
-
+│   ├── __init__.py
+│   ├── enums.py                  # 枚举定义
+│   └── events.py                 # 事件系统定义
+├── Portfolio/                    # 投资组合模块
+│   ├── __init__.py
 │   ├── base.py                   # 投资组合基类
-
 │   ├── portfolio.py              # 投资组合实现
-
-│   └── __init__.py
-
-├── Strategies/                   # 策略模块（已完成）
-
+│   └── sizers.py                 # 仓位管理策略
+├── Strategies/                   # 策略模块
+│   ├── __init__.py
 │   ├── base.py                   # 策略基类
-
 │   ├── simple_strategy.py        # 简单策略示例
-
-│   └── __init__.py
-
-├── Analysis/                     # 分析模块（已完成）
-
+│   ├── ma_strategy.py            # 移动平均策略
+│   └── macd_kdj_strategy.py      # MACD+KDJ策略
+├── Analysis/                     # 分析模块
+│   ├── __init__.py
 │   ├── performance.py            # 绩效分析器
-
 │   ├── plotting.py               # 图表绘制器
-
-│   └── __init__.py
-
+│   └── reporting.py              # 报告生成器
 ├── Test/                         # 测试模块
-
 │   ├── debug_data.py             # 数据调试脚本
-
 │   ├── debug_plotting.py         # 图表调试脚本
-
 │   ├── debug_strategy.py         # 策略调试脚本
-
 │   ├── debug_strategy_signals.py # 策略信号调试脚本
-
+│   ├── simple_wencai_test.py     # 问财简单测试
 │   ├── test_complete_analysis.py # 完整分析测试
-
 │   ├── test_comprehensive_integration.py  # 综合集成测试
-
 │   ├── test_engine.py            # 引擎测试
-
 │   ├── test_execution_module.py  # 执行模块测试
-
+│   ├── test_fixes.py             # 修复测试
+│   ├── test_main_plotting.py     # 主绘图测试
 │   ├── test_new_event_system.py  # 新事件系统测试
-
+│   ├── test_optimized_smoothing.py # 优化平滑测试
 │   ├── test_portfolio.py         # 投资组合测试
-
+│   ├── test_refactor.py          # 重构测试
+│   ├── test_sawtooth_issue.py    # 锯齿问题测试
 │   ├── test_strategy_base.py     # 策略基类测试
-
-│   └── test_wencai_csv_integration.py  # 问财CSV集成测试
-
-├── output/                       # 输出目录（图表、报告）
-
-└── txt/                          # 文档文件夹
+│   ├── test_wencai_connection.py # 问财连接测试
+│   ├── test_wencai_csv_integration.py  # 问财CSV集成测试
+│   └── test_wencai_final.py      # 问财最终测试
+└── output/                       # 输出目录（图表、报告）
+    └── backtest_20251124_204820/ # 回测结果示例
+        ├── backtest_report_*.png # 各类分析图表
+        └── report.txt             # 回测报告
 ```
 
 ## 🛠️ 安装
@@ -265,60 +197,55 @@ selector:
   wencai:
     retry_count: 3
     sleep_time: 2
+
+# 仓位管理配置
+portfolio:
+  sizer:
+    type: "equal_weight"  # 等权重、固定比例、信号强度加权、ATR
+    max_positions: 5      # 最大同时持仓数
+    cash_reserve_ratio: 0.1  # 现金预留比例
 ```
 
 ## 🎯 快速开始
 
-### 1. 完整回测流程
+### 1. 命令行快速启动
+
+```bash
+# 使用默认配置运行MACD+KDJ策略
+python main.py
+
+# 自定义参数运行
+python main.py --start-date 2024-01-01 --end-date 2024-12-31 --capital 1000000 --symbols 000001.SZ 600036.SH
+```
+
+### 2. 编程方式完整回测
 
 ```python
 from Engine.engine import BacktestEngine
-from Strategies.simple_strategy import SimpleMomentumStrategy
+from Strategies.macd_kdj_strategy import MACDKDJStrategy
 from Portfolio.portfolio import BacktestPortfolio
 from DataManager.handlers import BacktestDataHandler
 from DataManager.sources import LocalCSVLoader
-from collections import deque
+from Execution.simulator import SimulatedExecution
 from datetime import datetime
 
 # 1. 准备数据
 loader = LocalCSVLoader("C:/path/to/csv/data")
 data_handler = BacktestDataHandler(
     loader=loader,
-    symbol_list=["000001.SZSE", "000002.SZSE"],
+    symbol_list=["000001.SZ", "600036.SH"],
     start_date=datetime(2024, 1, 1),
-    end_date=datetime(2024, 1, 31)
+    end_date=datetime(2024, 12, 31)
 )
 
 # 2. 创建策略
-event_queue = deque()
-strategy = SimpleMomentumStrategy(data_handler, event_queue)
+strategy = MACDKDJStrategy(data_handler)
 
 # 3. 创建投资组合
-portfolio = BacktestPortfolio(data_handler, initial_capital=100000.0)
+portfolio = BacktestPortfolio(data_handler, initial_capital=1000000.0)
 
-# 4. 创建执行器（简单市价执行）
-class SimpleExecution:
-    def execute_order(self, order_event):
-        from Infrastructure.events import FillEvent
-        from Infrastructure.enums import Direction
-        
-        # 简单市价成交模拟
-        latest_bar = data_handler.get_latest_bar(order_event.symbol)
-        if latest_bar:
-            # 计算手续费 (0.03%)
-            commission = order_event.volume * latest_bar.close_price * 0.0003
-            
-            return FillEvent(
-                symbol=order_event.symbol,
-                datetime=latest_bar.datetime,
-                direction=order_event.direction,
-                volume=order_event.volume,
-                price=latest_bar.close_price,
-                commission=commission
-            )
-        return None
-
-execution = SimpleExecution()
+# 4. 创建执行器
+execution = SimulatedExecution(data_handler)
 
 # 5. 创建并运行回测引擎
 engine = BacktestEngine(data_handler, strategy, portfolio, execution)
@@ -331,7 +258,7 @@ print(f"总收益率: {portfolio_info['return_rate']:.2f}%")
 print(f"总交易次数: {portfolio_info['total_trades']}")
 ```
 
-### 2. 自定义策略开发
+### 3. 自定义策略开发
 
 ```python
 from Strategies.base import BaseStrategy
@@ -356,32 +283,47 @@ class MyCustomStrategy(BaseStrategy):
         # 策略逻辑：价格突破SMA5时买入
         if bar.close_price > sma5:
             # 检查当前是否有持仓
-            current_position = self.get_current_price(symbol)  # 这里需要扩展BaseStrategy
+            if self.portfolio and self.portfolio.get_position(symbol) > 0:
+                return  # 已有持仓，不重复买入
             
             # 策略信号：突破买入
             self.send_signal(symbol, Direction.LONG, strength=0.8)
         
         # 策略逻辑：价格跌破SMA5时卖出
         elif bar.close_price < sma5:
+            # 检查是否有持仓
+            if self.portfolio and self.portfolio.get_position(symbol) <= 0:
+                return  # 无持仓，不卖出
+            
             self.send_signal(symbol, Direction.SHORT, strength=0.8)
+    
+    @classmethod
+    def get_selection_query(cls) -> str:
+        """定义策略的选股条件"""
+        return "均线多头排列，MACD金叉"
 
 # 使用自定义策略
-strategy = MyCustomStrategy(data_handler, event_queue)
+strategy = MyCustomStrategy(data_handler)
 ```
 
-### 3. 投资组合管理
+### 4. 投资组合管理
 
 ```python
 from Portfolio.portfolio import BacktestPortfolio
 from Infrastructure.events import SignalEvent, Direction
+from Portfolio.sizers import create_sizer
 from datetime import datetime
 
 # 创建投资组合
-portfolio = BacktestPortfolio(data_handler, initial_capital=100000.0)
+portfolio = BacktestPortfolio(data_handler, initial_capital=1000000.0)
+
+# 自定义仓位管理策略
+sizer = create_sizer('signal_weighted', base_ratio=0.2, cash_reserve_ratio=0.1)
+portfolio.sizer = sizer
 
 # 模拟信号事件
 buy_signal = SignalEvent(
-    symbol="000001.SZSE",
+    symbol="000001.SZ",
     datetime=datetime.now(),
     direction=Direction.LONG,
     strength=0.8
@@ -397,9 +339,11 @@ portfolio_info = portfolio.get_portfolio_info()
 print(f"当前现金: {portfolio_info['current_cash']:,.2f}")
 print(f"总资产: {portfolio_info['total_equity']:,.2f}")
 print(f"持仓数量: {portfolio_info['positions_count']}")
+print(f"总交易次数: {portfolio_info['total_trades']}")
+print(f"胜率: {portfolio_info.get('win_rate', 'N/A')}")
 ```
 
-### 4. 测试本地数据加载
+### 5. 测试本地数据加载
 
 ```python
 from DataManager.sources import LocalCSVLoader
@@ -419,7 +363,7 @@ bars = loader.load_bar_data(
 print(f"加载了 {len(bars)} 条K线数据")
 ```
 
-### 2. 使用问财选股
+### 6. 使用问财选股
 
 ```python
 from DataManager.selectors import WencaiSelector
@@ -431,17 +375,17 @@ selector = WencaiSelector()
 # 选股
 bank_stocks = selector.select_stocks(
     date=datetime.now(),
-    query="银行"
+    query="银行股"
 )
 
-print(f"选到 {len(bank_stocks)} 只银行股")
+print(f"选到 {len(bank_stocks)} 只银行股: {bank_stocks[:5]}")
 ```
 
-### 3. 新事件系统测试
+### 7. 新事件系统测试
 
 ```python
 from Infrastructure.events import MarketEvent, SignalEvent, EventType, Direction
-from Infrastructure.enums import EventType, Direction, OrderType
+from Infrastructure.enums import OrderType
 from DataManager.schema.bar import BarData
 from datetime import datetime
 
@@ -472,7 +416,7 @@ signal_event = SignalEvent(
 print(f"信号事件: {signal_event}")
 ```
 
-### 4. 数据驱动层使用
+### 8. 数据驱动层使用
 
 ```python
 from DataManager.handlers import BacktestDataHandler
@@ -485,7 +429,7 @@ loader = LocalCSVLoader("C:/path/to/csv/data")
 # 创建数据处理器
 handler = BacktestDataHandler(
     loader=loader,
-    symbol_list=["000001.SZSE", "000002.SZSE"],
+    symbol_list=["000001.SZ", "600036.SH"],
     start_date=datetime(2024, 1, 1),
     end_date=datetime(2024, 12, 31)
 )
@@ -502,11 +446,11 @@ for event in handler.update_bars():
         break
 
 # 查询最新数据
-latest_bar = handler.get_latest_bar("000001.SZSE")
+latest_bar = handler.get_latest_bar("000001.SZ")
 if latest_bar:
     print(f"最新K线: {latest_bar.symbol} @ {latest_bar.datetime}, 价格: {latest_bar.close_price}")
 
-latest_bars = handler.get_latest_bars("000001.SZSE", 5)
+latest_bars = handler.get_latest_bars("000001.SZ", 5)
 print(f"最近5根K线: {len(latest_bars)} 条")
 ```
 
@@ -801,26 +745,42 @@ Portfolio (持仓更新) ✅
 ### 实际回测示例
 
 ```bash
+# 运行完整年度回测，使用MACD+KDJ策略
+python main.py
+
 # 运行3个月回测，2只股票，10万初始资金
 python main.py --start-date 2024-01-01 --end-date 2024-03-31 --capital 100000 --symbols 000001.SZ 600036.SH
 ```
 
 **输出结果：**
 ```
+[SUCCESS] 回测完成！查看 output/ 目录获取详细报告。
 步骤6: 分析回测结果
 ========================================
-累计收益率: 4.09%
-年化收益率: 16.36%
-最大回撤: -2.15%
-夏普比率: 1.23
-年化波动率: 18.45%
-交易天数: 60
-胜率: 52.3%
-卡尔玛比率: 7.61
-📊 Chart saved to: output/backtest_main_20251122_190951.png
-📊 Chart saved to: output/backtest_returns_20251122_190951.png
+策略名称: MACDKDJStrategy
+回测期间: 2024-01-02 至 2024-12-31
+交易天数: 242 天
+初始资金: 1,000,000.00 元
+最终权益: 970,236.48 元
 
-🎉 回测完成！查看 output/ 目录获取详细报告。
+📈 收益指标
+累计收益率: -2.98%
+年化收益率: -3.10%
+
+⚠️  风险指标
+最大回撤: -8.94%
+年化波动率: 9.88%
+
+🎯 风险调整收益
+夏普比率: -0.473
+卡尔玛比率: -0.347
+
+💰 交易统计
+总交易次数: 43 次
+胜率: 23.26%
+盈亏比: 2.758
+
+📊 报告已保存到: output/backtest_20251124_204820/
 ```
 
 ### 系统性能指标
@@ -829,6 +789,7 @@ python main.py --start-date 2024-01-01 --end-date 2024-03-31 --capital 100000 --
 - **内存效率**：生成器模式，内存占用优化
 - **稳定性**：三层异常处理，优雅降级机制
 - **扩展性**：模块化设计，易于添加新策略
+- **测试覆盖**：20+个测试用例，确保系统稳定性
 
 ## 🤝 贡献
 
@@ -862,4 +823,4 @@ MIT License
 
 **注意**: 本项目仅用于学习和研究目的，不构成投资建议。使用本系统进行实际交易的风险由用户自行承担。
 
-**最近更新**: 2025-11-22 - 完成系统主入口、边界异常处理增强和文档更新
+**最近更新**: 2025-11-25 - 更新项目结构说明，新增仓位管理策略和丰富策略库

@@ -8,96 +8,114 @@ QuantBacktest是一个完整的量化交易回测系统，采用事件驱动架�
 
 ```
 QuantBacktest/
-├── .env                         # 环境变量配置文件
 ├── .gitignore                   # Git忽略文件配置
+├── CODE_ISSUES.md               # 代码问题记录
 ├── PROJECT_SPECIFICATION.md     # 项目说明书
 ├── README.md                    # 项目说明文档
 ├── requirements.txt             # 项目依赖文件
+├── app.py                       # 应用程序主入口
+├── main.py                      # 命令行入口
+├── .claude/                     # Claude配置目录
+│   └── settings.local.json      # 本地配置
 ├── config/                       # 配置管理模块
 │   ├── config.yaml               # 业务配置文件
+│   ├── sizer_config.yaml         # 仓位管理配置
 │   ├── settings.py               # 配置读取类
 │   └── __init__.py
 ├── DataManager/                  # 数据管理模块
-│   ├── api.py                    # 数据管理API接口
 │   ├── __init__.py
 │   ├── feeds/                    # 数据流处理
+│   │   ├── __init__.py
 │   │   ├── base_feed.py          # 基础数据流类
 │   │   ├── lazy_feed.py          # 懒加载数据流
-│   │   ├── mem_feed.py           # 内存数据流
-│   │   └── __init__.py
+│   │   └── mem_feed.py           # 内存数据流
 │   ├── handlers/                 # 数据驱动层
-│   │   ├── handler.py            # 数据处理器实现（已重构）
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── handler.py            # 数据处理器实现
 │   ├── processors/               # 数据处理器
+│   │   ├── __init__.py
 │   │   ├── adjuster.py           # 数据调整器
 │   │   ├── cleaner.py            # 数据清洗器
 │   │   ├── merger.py             # 数据合并器
-│   │   ├── resampler.py          # 数据重采样器
-│   │   └── __init__.py
+│   │   └── resampler.py          # 数据重采样器
 │   ├── schema/                   # 数据结构定义
+│   │   ├── __init__.py
 │   │   ├── base.py               # 基础数据类
 │   │   ├── bar.py                # K线数据类
 │   │   ├── constant.py           # 常量定义
 │   │   ├── fundamental.py        # 财务数据类
-│   │   ├── tick.py               # Tick数据类
-│   │   └── __init__.py
+│   │   └── tick.py               # Tick数据类
 │   ├── selectors/                # 选股器模块
+│   │   ├── __init__.py
 │   │   ├── base.py               # 选股器基类
 │   │   ├── tushare_selector.py   # Tushare选股器
-│   │   ├── wencai_selector.py    # 问财选股器
-│   │   └── __init__.py
+│   │   └── wencai_selector.py    # 问财选股器
 │   ├── sources/                  # 数据源适配器
+│   │   ├── __init__.py
 │   │   ├── base_source.py        # 数据源基类
 │   │   ├── binance.py            # 币安数据源
 │   │   ├── local_csv.py          # 本地CSV数据源
 │   │   ├── tushare.py            # Tushare数据源
-│   │   ├── yfinance.py           # Yahoo Finance数据源
-│   │   └── __init__.py
+│   │   └── yfinance.py           # Yahoo Finance数据源
 │   └── storage/                  # 数据存储模块
+│       ├── __init__.py
 │       ├── base_store.py         # 存储基类
 │       ├── csv_store.py          # CSV存储
 │       ├── hdf5_store.py         # HDF5存储
 │       ├── influx_store.py       # InfluxDB存储
-│       ├── mysql_store.py        # MySQL存储
-│       └── __init__.py
-├── Engine/                       # 回测引擎模块（已完成）
-│   ├── engine.py                 # 回测引擎核心
-│   └── __init__.py
-├── Execution/                    # 撮合执行模块（已完成）
+│       └── mysql_store.py        # MySQL存储
+├── Engine/                       # 回测引擎模块
+│   ├── __init__.py
+│   └── engine.py                 # 回测引擎核心
+├── Execution/                    # 撮合执行模块
+│   ├── __init__.py
 │   ├── base.py                   # 执行器基类
-│   ├── simulator.py              # 模拟执行器
-│   └── __init__.py
+│   └── simulator.py              # 模拟执行器
 ├── Infrastructure/               # 基础设施模块
-│   ├── enums.py                  # 枚举定义（新增）
-│   ├── events.py                 # 事件系统定义（已重构）
-│   └── __init__.py
-├── Portfolio/                    # 投资组合模块（已完成）
+│   ├── __init__.py
+│   ├── enums.py                  # 枚举定义
+│   └── events.py                 # 事件系统定义
+├── Portfolio/                    # 投资组合模块
+│   ├── __init__.py
 │   ├── base.py                   # 投资组合基类
 │   ├── portfolio.py              # 投资组合实现
-│   └── __init__.py
-├── Strategies/                   # 策略模块（已完成）
+│   └── sizers.py                 # 仓位管理策略
+├── Strategies/                   # 策略模块
+│   ├── __init__.py
 │   ├── base.py                   # 策略基类
 │   ├── simple_strategy.py        # 简单策略示例
-│   └── __init__.py
-├── Analysis/                     # 分析模块（已完成）
+│   ├── ma_strategy.py            # 移动平均策略
+│   └── macd_kdj_strategy.py      # MACD+KDJ策略
+├── Analysis/                     # 分析模块
+│   ├── __init__.py
 │   ├── performance.py            # 绩效分析器
 │   ├── plotting.py               # 图表绘制器
-│   └── __init__.py
+│   └── reporting.py              # 报告生成器
 ├── Test/                         # 测试模块
 │   ├── debug_data.py             # 数据调试脚本
 │   ├── debug_plotting.py         # 图表调试脚本
 │   ├── debug_strategy.py         # 策略调试脚本
 │   ├── debug_strategy_signals.py # 策略信号调试脚本
+│   ├── simple_wencai_test.py     # 问财简单测试
 │   ├── test_complete_analysis.py # 完整分析测试
 │   ├── test_comprehensive_integration.py  # 综合集成测试
 │   ├── test_engine.py            # 引擎测试
 │   ├── test_execution_module.py  # 执行模块测试
+│   ├── test_fixes.py             # 修复测试
+│   ├── test_main_plotting.py     # 主绘图测试
 │   ├── test_new_event_system.py  # 新事件系统测试
+│   ├── test_optimized_smoothing.py # 优化平滑测试
 │   ├── test_portfolio.py         # 投资组合测试
+│   ├── test_refactor.py          # 重构测试
+│   ├── test_sawtooth_issue.py    # 锯齿问题测试
 │   ├── test_strategy_base.py     # 策略基类测试
-│   └── test_wencai_csv_integration.py  # 问财CSV集成测试
-├── output/                       # 输出目录（图表、报告）
-└── txt/                          # 文档文件夹
+│   ├── test_wencai_connection.py # 问财连接测试
+│   ├── test_wencai_csv_integration.py  # 问财CSV集成测试
+│   └── test_wencai_final.py      # 问财最终测试
+└── output/                       # 输出目录（图表、报告）
+    └── backtest_20251124_204820/ # 回测结果示例
+        ├── backtest_report_*.png # 各类分析图表
+        └── report.txt             # 回测报告
 ```
 
 ## 详细模块说明
@@ -136,24 +154,44 @@ class Settings:
 class BacktestEngine:
     """回测引擎核心"""
     
+    核心属性：
+        - data_handler: BaseDataHandler  # 数据处理器
+        - strategy: Any  # 策略实例，实现 IStrategy 接口
+        - portfolio: Any  # 投资组合实例
+        - execution: Any  # 执行器实例
+        - event_queue: Deque[Any]  # 统一事件队列
+        - is_running: bool  # 回测运行状态
+        - current_time: Optional[datetime]  # 当前回测时间
+        - total_events: int  # 总事件数
+        - market_events: int  # 行情事件数
+        - signal_events: int  # 信号事件数
+        - order_events: int  # 订单事件数
+        - fill_events: int  # 成交事件数
+    
     职责：
     - 维护事件队列和事件循环
     - 协调数据处理器、策略、投资组合和执行器之间的交互
-    - 严格依赖 DataHandler.update_bars() 生成器
-    - 依赖注入: 接收策略、投资组合和执行器实例
+    - 严格按时间顺序处理事件，防止未来函数
+    - 提供统一的回测启动和管理接口
     
-    核心方法:
+    核心方法：
         - __init__(data_handler, strategy, portfolio, execution)  # 初始化依赖
         - run()  # 主入口，启动回测
         - _process_queue()  # 处理事件队列
         - _handle_event(event)  # 事件分发处理器
-        - get_status()  # 获取引擎状态
+        - _handle_market_event(event)  # 处理行情事件
+        - _handle_signal_event(event)  # 处理信号事件
+        - _handle_order_event(event)  # 处理订单事件
+        - _handle_fill_event(event)  # 处理成交事件
+        - _show_progress()  # 显示回测进度
+        - _show_statistics()  # 显示统计信息
+        - get_status() -> dict  # 获取引擎状态
     
-    事件处理:
-        - MarketEvent → 策略处理 + 投资组合更新
+    事件处理流程：
+        - MarketEvent → 投资组合更新市值 + 策略处理行情
         - SignalEvent → 投资组合风控 + 订单生成
         - OrderEvent → 执行器撮合 + 成交生成
-        - FillEvent → 投资组合更新
+        - FillEvent → 投资组合更新持仓和资金
 ```
 
 ### 3. 策略抽象层 (Strategies/)
@@ -172,6 +210,11 @@ class IStrategy(ABC):
     def set_event_queue(self, event_queue: deque) -> None:
         """设置事件队列的抽象方法"""
         pass
+    
+    @classmethod
+    def get_selection_query(cls) -> str:
+        """定义策略的静态选股条件，返回问财查询语句"""
+        return None
 
 class BaseStrategy(IStrategy, ABC):
     """策略抽象基类"""
@@ -182,16 +225,31 @@ class BaseStrategy(IStrategy, ABC):
     - 数据访问权限：策略通过 DataHandler 访问历史数据，严禁访问未来数据
     - 模板方法模式：确保状态更新和策略逻辑的正确执行顺序
     
+    核心属性：
+        - data_handler: BaseDataHandler  # 数据处理器
+        - event_queue: Optional[deque]   # 事件队列（延迟注入）
+        - portfolio: Optional[Any]       # 投资组合引用（延迟注入）
+        - is_initialized: bool           # 策略初始化状态
+        - current_time: Optional[datetime] # 当前回测时间
+        - signals_generated: int         # 生成信号数量
+        - market_data_processed: int     # 处理行情数据数量
+    
     核心方法：
-        - __init__(data_handler)  # 初始化依赖（事件队列延迟注入）
-        - set_event_queue(event_queue)  # 设置引擎的事件队列引用
+        - __init__(data_handler)  # 初始化依赖
+        - set_event_queue(event_queue)  # 设置事件队列引用
+        - set_portfolio(portfolio)  # 设置投资组合引用
         - on_market_data(event) [抽象]  # 处理行情数据
         - send_signal(symbol, direction, strength)  # 发送信号到引擎队列
         - get_latest_bars(symbol, n)  # 获取历史数据
         - get_latest_bar(symbol)  # 获取最新K线
+        - get_current_price(symbol)  # 获取当前价格
         - calculate_sma(symbol, period)  # 计算SMA
         - calculate_ema(symbol, period)  # 计算EMA
+        - is_price_above_sma(symbol, period)  # 判断价格是否在SMA之上
+        - get_price_change_pct(symbol)  # 获取价格变动百分比
+        - _update_strategy_state(event)  # 更新策略状态
         - _process_market_data(event)  # 模板方法（引擎应调用此方法）
+        - get_strategy_info() -> dict  # 获取策略信息
 ```
 
 #### Strategies/simple_strategy.py
@@ -206,6 +264,27 @@ class SimpleMomentumStrategy(BaseStrategy):
     统计方法：
         - buy_signals: 买入信号数量
         - sell_signals: 卖出信号数量
+```
+
+#### Strategies/ma_strategy.py
+```python
+class MAStrategy(BaseStrategy):
+    """移动平均策略"""
+    
+    策略逻辑：
+    - 基于双均线交叉信号
+    - 支持自定义短期和长期均线周期
+```
+
+#### Strategies/macd_kdj_strategy.py
+```python
+class MACDKDJStrategy(BaseStrategy):
+    """MACD+KDJ组合策略"""
+    
+    策略逻辑：
+    - MACD指标判断趋势方向
+    - KDJ指标判断超买超卖
+    - 组合信号提高准确性
 ```
 
 ### 4. 投资组合模块 (Portfolio/)
@@ -238,6 +317,18 @@ class BasePortfolio(ABC):
 class BacktestPortfolio(BasePortfolio):
     """现货回测投资组合实现"""
     
+    核心属性：
+        - current_cash: float  # 当前可用现金
+        - positions: Dict[str, int]  # 持仓字典
+        - total_equity: float  # 总资产
+        - total_trades: int  # 总交易次数
+        - total_commission: float  # 总手续费
+        - equity_curve: List[Dict]  # 资金曲线记录
+        - fill_history: List[Dict]  # 成交历史记录
+        - max_positions: int  # 最大同时持仓数量
+        - cash_reserve_ratio: float  # 现金预留比例
+        - sizer: BaseSizer  # 仓位管理器
+    
     核心功能：
     - 资金管理：维护现金和持仓
     - 信号转化：将策略建议转化为具体订单
@@ -246,16 +337,62 @@ class BacktestPortfolio(BasePortfolio):
     - 风控：多层保护机制
     
     关键逻辑：
-        - 买入：智能资金管理，预留10%缓冲
+        - 买入：使用Sizer计算目标资金，预留10%缓冲
         - 卖出：清仓卖出，小额交易过滤
         - 风控：满仓检查、重复持仓检查、手续费预估
         - 手续费：0.03%费率，最低5元
         - 资金验证：每笔交易后验证计算正确性
     
-    新增功能：
-        - _update_total_equity()  # 自动更新总资产
-        - 资金安全检查：检测现金负数情况
-        - 详细日志记录：完整的资金变动记录
+    核心方法：
+        - update_on_market(event)  # 盯市更新
+        - update_on_fill(event)  # 成交处理
+        - process_signal(event)  # 信号转订单
+        - _process_buy_signal(event)  # 处理买入信号
+        - _process_sell_signal(event)  # 处理卖出信号
+        - get_position(symbol)  # 获取持仓
+        - get_positions()  # 获取所有持仓
+        - get_cash()  # 获取现金
+        - get_equity()  # 获取总资产
+        - get_portfolio_info()  # 获取详细信息
+        - _record_equity_curve()  # 记录资金曲线
+        - _update_total_equity()  # 更新总资产
+        - _record_fill(event)  # 记录成交
+        - get_fill_history()  # 获取成交历史
+        - get_equity_curve()  # 获取资金曲线
+```
+
+#### Portfolio/sizers.py
+```python
+class BaseSizer(ABC):
+    """仓位管理策略基类"""
+    
+    核心方法：
+        - calculate_target_value(portfolio, signal, data_handler) -> float  # 计算目标金额
+        - get_param(key, default)  # 获取参数
+        - set_logger(logger)  # 设置日志记录器
+
+class EqualWeightSizer(BaseSizer):
+    """等权重分配策略"""
+    
+    逻辑：目标金额 = 总资金 / 最大持仓数量
+
+class FixedRatioSizer(BaseSizer):
+    """固定比例分配策略"""
+    
+    逻辑：目标金额 = 总资金 * 固定比例
+
+class SignalWeightedSizer(BaseSizer):
+    """信号强度加权分配策略"""
+    
+    逻辑：根据信号强度分配不同比例的仓位
+
+class ATRSizer(BaseSizer):
+    """ATR波动率仓位管理策略"""
+    
+    逻辑：根据股票历史波动率动态调整仓位
+
+def create_sizer(sizer_type: str, **kwargs) -> BaseSizer:
+    """工厂函数：根据类型创建仓位管理器"""
 ```
 
 ### 5. 数据处理器模块 (DataManager/handlers/)
@@ -755,7 +892,7 @@ class BacktestDataHandler(BaseDataHandler):
 
 #### Execution/base.py
 ```python
-class BaseExecution(ABC):
+class BaseExecutor(ABC):
     """执行器抽象基类"""
     
     职责：
@@ -773,8 +910,15 @@ class BaseExecution(ABC):
 
 #### Execution/simulator.py
 ```python
-class SimulatedExecution(BaseExecution):
-    """模拟交易执行器"""
+class SimulatedExecution(BaseExecutor):
+    """回测模拟执行器"""
+    
+    核心属性：
+        - data_handler: BaseDataHandler  # 数据处理器
+        - orders_received: int  # 接收订单数
+        - orders_executed: int  # 执行订单数
+        - orders_rejected: int  # 拒绝订单数
+        - total_commission: float  # 总手续费
     
     职责：
     - 模拟真实的交易执行环境
@@ -782,50 +926,18 @@ class SimulatedExecution(BaseExecution):
     - 处理市价单和限价单
     - 维护订单状态和执行统计
     
-    属性：
-        - data_handler: BaseDataHandler    # 数据处理器引用，用于获取价格信息
-        - commission_rate: float           # 手续费率（0.0003 表示 0.03%）
-        - slippage_rate: float            # 滑点率（0.001 表示 0.1%）
-        - min_commission: float           # 最低手续费（5元）
-        - logger: Logger                  # 日志记录器
-        - _execution_stats: Dict[str, Any]  # 执行统计信息
+    特点：
+    - 假设无限流动性，订单总是能全额成交
+    - 支持市价单和限价单
+    - 考虑手续费和滑点成本
     
     核心方法：
-        - __init__(data_handler, commission_rate=0.0003, slippage_rate=0.001, min_commission=5.0)
-            # 初始化执行器参数
-        
-        - execute_order(order_event: OrderEvent) -> Optional[FillEvent]
-            # 核心执行逻辑：
-            # 1. 验证订单有效性
-            # 2. 获取当前价格（市价单使用收盘价，限价单需要价格匹配）
-            # 3. 计算成交价格（加入滑点）
-            # 4. 计算手续费
-            # 5. 生成FillEvent并返回
-        
-        - validate_order(order_event: OrderEvent) -> bool
-            # 验证订单参数合法性：
-            # - 股票代码是否存在
-            # - 交易方向是否有效
-            # - 交易数量是否为正
-            # - 限价单价格是否合理
-        
-        - _calculate_commission(trade_value: float) -> float
-            # 计算手续费，使用 min_commission 和 commission_rate 中的较大值
-        
-        - _apply_slippage(price: float, direction: Direction) -> float
-            # 根据交易方向应用滑点：
-            # - 买单：价格上涨 (1 + slippage_rate)
-            # - 卖单：价格下跌 (1 - slippage_rate)
-        
-        - get_execution_stats() -> Dict[str, Any]
-            # 返回执行统计信息：
-            # - orders_received: 接收订单数
-            # - orders_executed: 执行订单数
-            # - orders_rejected: 拒绝订单数
-            # - execution_rate: 执行率
-            # - total_commission: 总手续费
-            # - avg_commission: 平均手续费
-            # - avg_slippage_cost: 平均滑点成本
+        - __init__(data_handler, **kwargs)  # 初始化
+        - execute_order(order_event) -> Optional[FillEvent]  # 执行订单
+        - _get_fill_price(order_event) -> Optional[float]  # 获取成交价格
+        - _get_current_time() -> Optional[datetime]  # 获取当前回测时间
+        - get_execution_stats() -> dict  # 获取执行统计
+        - reset_stats()  # 重置统计信息
 ```
 
 ### 6. 分析模块 (Analysis/)
@@ -910,6 +1022,23 @@ class BacktestPlotter:
         - __init__(analyzer, figsize: tuple = (12, 10))
     
     核心方法：
+```
+
+#### Analysis/reporting.py
+```python
+class BacktestReporter:
+    """回测报告生成器"""
+    
+    职责：
+    - 生成详细的回测报告
+    - 分析交易明细和绩效指标
+    - 输出格式化的报告文件
+    
+    核心方法：
+        - generate_report(portfolio, analyzer, output_path)  # 生成报告
+        - analyze_trades(fill_history)  # 分析交易明细
+        - format_performance_metrics(summary)  # 格式化绩效指标
+```
         - show_analysis_plot(save_path: Optional[str] = None)
             # 显示完整的分析图表，包含：
             # - 上图：资金曲线图（总资产、现金、持仓市值）
